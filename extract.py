@@ -1,0 +1,269 @@
+"""
+Mealie Mixer — recipe extraction core (step 2)
+
+Takes one or more recipe images, sends them to a vision LLM, and prints
+structured recipe data as JSON. This is the heart of the pipeline; the
+Mealie push (steps 3-4) and the web UI (step 5) come later.
+
+The extract_recipes() function is the reusable core — the UI will call it.
+
+Run:
+    export AI_API_KEY="your-google-ai-studio-key"
+    python extract.py shot.jpg
+    python extract.py shot1.jpg shot2.jpg --lang English --prompt "no mushrooms"
+"""
+
+import argparse
+import base64
+import io
+import json
+import sys
+
+from openai import OpenAI
+from PIL import Image
+
+import config
+
+# Backend is swappable via the config layer: AI_BASE_URL / AI_MODEL can point at
+# OpenRouter, OpenAI, a local model, whatever. Gemini 3.1 Flash Lite (free tier)
+# is just the default value, not a hardcoded dependency. Values are read live
+# from config.get() at call time (see _structure) so a saved config applies.
+
+MAX_IMAGE_PX = 1200   # longest edge after resize — keeps payloads small/fast
+JPEG_QUALITY = 85
+
+# ── The prompt (this is what we'll tune together) ──────────────────────
+SYSTEM_PROMPT = (
+    "You are a precise recipe extraction engine. You read recipe images and "
+    "output clean, structured data. You never invent ingredients or steps "
+    "that aren't shown in the image."
+)
+
+
+def build_user_prompt(target_language: str, user_note: str, source: str = "the image(s)") -> str:
+    extra = f"\n\nExtra instructions from the user: {user_note}" if user_note.strip() else ""
+    return f"""Extract every recipe in {source}.
+
+For each recipe, output:
+- name
+- description: one short line, or ""
+- servings: a number — how many portions/servings the recipe makes (the base for scaling), or null if not stated
+- yield: a short human-readable yield like "6 sandwiches" or "4 servings", or "" if not stated
+- ingredients: a list, each with:
+    - quantity: a number, or null if there is no clear amount
+    - unit: a string ("g", "ml", "tbsp", "pack", "clove", ...) or null
+    - food: the ingredient name ONLY, kept clean (e.g. "ground beef")
+    - note: anything extra ("finely chopped", "80/20", "to taste") or null
+- instructions: a list of step strings, in order
+- tags: a short list of tags ("dinner", "vegetarian", ...), or []
+
+Rules:
+- Translate EVERYTHING (name, ingredients, steps, tags) into {target_language}.
+- Convert all measurements to metric (grams, millilitres). Keep tbsp/tsp/pinch as-is.
+- Put the ingredient name in "food" and descriptors in "note", so "food" stays clean and reusable.
+- Keep "food" to a SINGLE ingredient. If the source offers alternatives ("X or Y"), put X in "food" and "or Y" in "note".
+- NEVER merge two different foods into one ingredient (e.g. "salt and pepper", "oil or lard" is fine as alternatives but "salt and pepper" is two foods). Emit a separate ingredient for each, even if they share an amount or are both "to taste".
+- If there is no clear amount (e.g. "salt to taste"), set quantity to null and put the descriptor in "note".
+- For a range like "1.2 to 1.4 kg", pick the higher number and note the range.
+- Do NOT invent anything not shown in the source.{extra}
+
+Respond with ONLY a JSON object in exactly this shape — no markdown, no commentary:
+{{"recipes": [{{"name": "...", "description": "...", "servings": 4, "yield": "4 servings", "ingredients": [{{"quantity": 1.4, "unit": "kg", "food": "ground beef", "note": "80/20"}}], "instructions": ["..."], "tags": ["..."]}}]}}"""
+
+
+# ── Image handling ─────────────────────────────────────────────────────
+def image_to_data_url(path: str) -> str:
+    """Open, resize, re-encode as JPEG, return a base64 data URL."""
+    img = Image.open(path)
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    img.thumbnail((MAX_IMAGE_PX, MAX_IMAGE_PX))  # in place, keeps aspect ratio
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=JPEG_QUALITY)
+    b64 = base64.b64encode(buf.getvalue()).decode()
+    return f"data:image/jpeg;base64,{b64}"
+
+
+# ── The core call (this is what the UI will import and use) ────────────
+def _structure(content: list) -> list[dict]:
+    """Send a user-content payload (text prompt + images, or just text) to the
+    LLM and return normalised structured recipes. Shared by the image and URL
+    paths — same single call, same JSON shape out, regardless of input."""
+    api_key = config.get("AI_API_KEY")
+    if not api_key:
+        raise RuntimeError("AI_API_KEY is not set — configure it in the setup page or .env.")
+
+    client = OpenAI(base_url=config.get("AI_BASE_URL"), api_key=api_key)
+    resp = client.chat.completions.create(
+        model=config.get("AI_MODEL"),
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": content},
+        ],
+        temperature=0.1,
+    )
+    raw = resp.choices[0].message.content or ""
+    return _normalize(parse_recipes(raw))
+
+
+def extract_recipes(
+    image_paths: list[str],
+    user_note: str = "",
+    target_language: str = "English",
+) -> list[dict]:
+    """Extract recipe(s) from one or more images."""
+    # Multimodal message: the text prompt + every image.
+    content = [{"type": "text", "text": build_user_prompt(target_language, user_note)}]
+    for p in image_paths:
+        content.append({"type": "image_url", "image_url": {"url": image_to_data_url(p)}})
+    return _structure(content)
+
+
+def extract_recipes_from_url(
+    url: str,
+    user_note: str = "",
+    target_language: str = "English",
+) -> list[dict]:
+    """Extract recipe(s) from a recipe-website URL.
+
+    We scrape the page into rough source text (recipe-scrapers, with wild_mode
+    so it falls back to schema.org for sites it doesn't explicitly support),
+    then hand that text to the SAME LLM structuring step — so translation and
+    the quantity/unit/food split work exactly as they do for images.
+    Won't work on social posts (Instagram/TikTok) — screenshot those instead.
+    """
+    source_text, image_url = _scrape_url(url)
+    prompt = build_user_prompt(target_language, user_note, source="the recipe text below")
+    content = [{"type": "text", "text": f"{prompt}\n\n--- RECIPE SOURCE ---\n{source_text}"}]
+    recipes = _structure(content)
+    # carry the page's dish photo through so push.py can attach it in Mealie
+    for r in recipes:
+        if image_url:
+            r["image_url"] = image_url
+    return recipes
+
+
+def _scrape_url(url: str) -> tuple[str, str]:
+    """Fetch a URL and pull a rough recipe text block + the dish photo URL out
+    of it. Raises a clear error if no structured recipe is found on the page."""
+    import httpx
+    from recipe_scrapers import scrape_html
+
+    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) MealieMixer/1.0"}
+    resp = httpx.get(url, headers=headers, follow_redirects=True, timeout=30)
+    resp.raise_for_status()
+
+    scraper = scrape_html(resp.text, org_url=url, wild_mode=True)
+
+    parts: list[str] = []
+    def grab(label, fn):
+        try:
+            val = fn()
+        except Exception:
+            return
+        if not val:
+            return
+        if isinstance(val, (list, tuple)):
+            val = "\n".join(str(v) for v in val)
+        parts.append(f"{label}:\n{val}")
+
+    grab("Title", scraper.title)
+    grab("Yields", scraper.yields)
+    grab("Ingredients", scraper.ingredients)
+    grab("Instructions", scraper.instructions)
+
+    try:
+        image_url = scraper.image() or ""
+    except Exception:
+        image_url = ""
+
+    text = "\n\n".join(parts).strip()
+    if not text:
+        raise ValueError(
+            "Couldn't find a recipe at that link — no structured recipe data on the page. "
+            "(Social posts like Instagram/TikTok won't work; screenshot those instead.)"
+        )
+    return text, image_url
+
+
+def test_ai(base_url: str, model: str, api_key: str) -> tuple[bool, str]:
+    """Validate the AI base/model/key with a tiny 1-token completion. Returns
+    (ok, message). Validates the key AND the model name together. Used by the
+    setup/settings page's Test button (costs ~1 token)."""
+    base_url = (base_url or "").strip() or config.DEFAULTS["AI_BASE_URL"]
+    model = (model or "").strip() or config.DEFAULTS["AI_MODEL"]
+    api_key = (api_key or "").strip()
+    if not api_key:
+        return False, "Enter the AI API key first."
+    try:
+        client = OpenAI(base_url=base_url, api_key=api_key)
+        client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=1,
+            temperature=0,
+        )
+    except Exception as e:
+        return False, f"AI call failed: {str(e)[:200]}"
+    return True, f"AI reachable — model '{model}' responded."
+
+
+def _normalize(recipes: list[dict]) -> list[dict]:
+    """Default a 0 quantity to 1. 0 is never a real recipe quantity — the model
+    uses it as a placeholder for 'no amount' (e.g. a topping listed by name),
+    but 0 scales to 0 and shows "0 bell pepper" on shopping lists. 1 is a
+    useful, scalable default; the human bumps or clears it in review."""
+    for r in recipes:
+        for ing in r.get("ingredients", []):
+            if ing.get("quantity") == 0:
+                ing["quantity"] = 1
+    return recipes
+
+
+def parse_recipes(raw: str) -> list[dict]:
+    """Robustly pull the JSON object out of the model's reply."""
+    text = raw.strip()
+
+    # strip ```json ... ``` fences if the model added them
+    if text.startswith("```"):
+        parts = text.split("```")
+        text = parts[1] if len(parts) > 1 else text
+        if text.lstrip().lower().startswith("json"):
+            text = text.lstrip()[4:]
+        text = text.strip()
+
+    # if there's stray prose around it, grab the outermost { ... }
+    if not text.startswith("{"):
+        start, end = text.find("{"), text.rfind("}")
+        if start != -1 and end != -1:
+            text = text[start : end + 1]
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        print("Could not parse JSON. Raw response was:\n", raw, file=sys.stderr)
+        raise
+
+    return data.get("recipes", [])
+
+
+# ── CLI ────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser(description="Extract structured recipes from images or a URL.")
+    ap.add_argument("images", nargs="*", help="one or more image files (same recipe or several)")
+    ap.add_argument("--url", default="", help="extract from a recipe-website URL instead of images")
+    ap.add_argument("--prompt", default="", help='extra instructions, e.g. "no mushrooms"')
+    ap.add_argument("--lang", default="English", help="output language (default: English)")
+    args = ap.parse_args()
+
+    if not args.url and not args.images:
+        ap.error("provide image file(s) or --url")
+    try:
+        if args.url:
+            recipes = extract_recipes_from_url(args.url, user_note=args.prompt, target_language=args.lang)
+        else:
+            recipes = extract_recipes(args.images, user_note=args.prompt, target_language=args.lang)
+    except RuntimeError as e:
+        sys.exit(f"ERROR: {e}")
+    print(json.dumps(recipes, indent=2, ensure_ascii=False))
+    print(f"\n\u2713 extracted {len(recipes)} recipe(s)", file=sys.stderr)

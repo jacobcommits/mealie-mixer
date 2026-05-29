@@ -1,0 +1,17 @@
+# Secrets — never commit. Use .env.example as the template.
+.env
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+.pytest_cache/
+
+# Local scratch / runtime artifacts
+*.log
+recipe.json
+eggpaste.json
+.claude/
+.DS_Store

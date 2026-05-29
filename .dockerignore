@@ -1,0 +1,20 @@
+# Never ship secrets or local cruft into the image
+.env
+venv/
+.venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+
+# Dev docs & scratch files — not needed at runtime
+CLAUDE.md
+plan.md
+*.log
+recipe.json
+eggpaste.json
+
+# Tests & dev tooling — not in the runtime image
+tests/
+requirements-dev.txt
+.pytest_cache/

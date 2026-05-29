@@ -1,0 +1,22 @@
+services:
+  mealie-mixer:
+    build: .
+    container_name: mealie-mixer
+    # Config can come from a .env here OR from the in-app setup page (which
+    # persists to the /data volume below). The .env is optional — without one,
+    # the app starts straight into its setup page.
+    #   .env keys: AI_API_KEY, MEALIE_URL, MEALIE_TOKEN (+ optional MIXER_AUTH_*)
+    # NOTE: `required: false` needs Docker Compose v2.24+ (recent Docker has it).
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      # LAN ONLY. This app can write to Mealie — do not expose to the internet.
+      - "7860:7860"
+    volumes:
+      # Persists config written by the setup page (survives restarts/rebuilds)
+      - mealie-mixer-data:/data
+    restart: unless-stopped
+
+volumes:
+  mealie-mixer-data:
