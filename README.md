@@ -133,9 +133,11 @@ Settings are stored on the **`/data` volume**, so you do this once. Change them 
 
 Mealie Mixer exposes a REST API so an external agent (e.g. a Telegram bot) can drive extraction and push programmatically — no browser needed.
 
-**Enable it** by setting `MIXER_API_KEY` (env var, `.env`, or the Settings panel). The API is **disabled by default** (fail-closed: empty key → 503).
+**Enable it** by setting `MIXER_API_KEY` (env var, `.env`, or the Settings panel — there's a **🎲 Generate key** button). The API is **disabled by default** (fail-closed: empty key → 503).
 
 Interactive docs (Swagger UI) are at **`/docs`** once the server is running.
+
+📄 **Building an agent/bot?** See **[docs/agent-integration.md](docs/agent-integration.md)** for a ready-to-use integration guide (workflow + endpoints + recipe shape).
 
 ### Endpoints
 

@@ -28,6 +28,7 @@ Run:
 """
 
 import os
+import secrets
 import tempfile
 from urllib.parse import urlparse
 
@@ -276,6 +277,14 @@ def do_test_ai(base, model, key):
     return ("✅ " if ok else "❌ ") + msg
 
 
+def do_generate_key():
+    """Make a strong random API key and show it once so it can be copied to the
+    agent. Fills the (masked) field too, so it's saved when you click Save."""
+    key = secrets.token_urlsafe(32)
+    note = f"🔑 **Copy this now** for your agent (it'll be masked after save):\n\n`{key}`"
+    return key, note
+
+
 def _apply_config(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user, auth_pass, api_key=""):
     """Validate + persist config to the data volume. Mealie URL/token + AI key
     required; AI base/model fall back to defaults. Login and API key optional —
@@ -468,6 +477,8 @@ with gr.Blocks(title="Mealie Mixer") as demo:
                     "Blank = API disabled.  Interactive docs at **[/docs](/docs)**.")
         set_api_key = gr.Textbox(label="API key (MIXER_API_KEY)", type="password",
                                  placeholder=_secret_ph("MIXER_API_KEY"))
+        set_gen_key = gr.Button("🎲 Generate key", size="sm")
+        set_api_gen = gr.Markdown()
         set_save = gr.Button("Save settings", variant="primary")
         set_status = gr.Markdown()
 
@@ -497,6 +508,7 @@ with gr.Blocks(title="Mealie Mixer") as demo:
     # Settings panel
     set_test_mealie.click(do_test_mealie, [set_mealie_url, set_mealie_token], set_mealie_status)
     set_test_ai.click(do_test_ai, [set_ai_base, set_ai_model, set_ai_key], set_ai_status)
+    set_gen_key.click(do_generate_key, None, [set_api_key, set_api_gen])
     set_save.click(
         do_save_settings,
         [set_mealie_url, set_mealie_token, set_ai_key, set_ai_base, set_ai_model,
@@ -543,11 +555,14 @@ with gr.Blocks(title="Mealie Mixer — Setup") as setup_demo:
                     "Leave blank to disable the API.")
         su_api_key = gr.Textbox(label="API key", type="password",
                                 placeholder=_secret_ph("MIXER_API_KEY"))
+        su_gen_key = gr.Button("🎲 Generate key", size="sm")
+        su_api_gen = gr.Markdown()
     su_save = gr.Button("Save", variant="primary")
     su_status = gr.Markdown()
 
     su_test_mealie.click(do_test_mealie, [su_mealie_url, su_mealie_token], su_mealie_status)
     su_test_ai.click(do_test_ai, [su_ai_base, su_ai_model, su_ai_key], su_ai_status)
+    su_gen_key.click(do_generate_key, None, [su_api_key, su_api_gen])
     su_save.click(
         do_save_setup,
         [su_mealie_url, su_mealie_token, su_ai_key, su_ai_base, su_ai_model,

@@ -15,6 +15,14 @@ def test_parse_qty():
     assert app._parse_qty("13") == 13.0
 
 
+def test_generate_key():
+    k1, note = app.do_generate_key()
+    k2, _ = app.do_generate_key()
+    assert len(k1) >= 32 and k1.isascii()
+    assert k1 != k2          # random each time
+    assert k1 in note        # shown so it can be copied
+
+
 def test_normalize_url():
     # the real footgun: a doubled scheme → host parsed as 'http'
     assert app._normalize_url("http://http://10.0.10.149:9925/") == "http://10.0.10.149:9925/"
