@@ -12,7 +12,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Just the pipeline modules — secrets come from env/volume at runtime, never baked in
-COPY config.py extract.py push.py app.py ./
+COPY config.py extract.py push.py api.py app.py ./
 
 # Config the setup page persists to (mount a volume here)
 ENV MIXER_DATA_DIR=/data
@@ -31,7 +31,7 @@ EXPOSE 7860
 # Report healthy once the web server answers (no curl in slim — use Python,
 # exec form so it survives buildah; urlopen raises -> non-zero exit on failure).
 # start-period covers Gradio boot + the one-time food-list load.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7860/', timeout=4)"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7860/api/health', timeout=4)"]
 
 # LAN only — do NOT publish this port to the internet (it can write to Mealie).
 CMD ["python", "app.py"]

@@ -1,8 +1,12 @@
-"""
-Mealie Mixer — review UI (step 5)
+"""Mealie Mixer — review UI + REST API (Phase 5 / Stage 2)
 
 The front door for the pipeline: upload screenshot(s) -> extract -> review &
 EDIT a structured preview -> Approve pushes to Mealie, Discard clears.
+
+Phase 5 adds a REST API alongside the Gradio UI so an external agent (e.g. a
+Telegram bot) can drive extract + push programmatically.  The server is a
+FastAPI app: the API routes live in api.py and the Gradio UI is mounted at /.
+Both share the same port; the API has its own key-based auth.
 
 This module is deliberately thin: all the real work lives in extract.py
 (extraction) and push.py (Mealie). The UI just collects input, shows an
@@ -20,7 +24,7 @@ their change handlers, so typing into a prefilled box doesn't recreate it. The
 
 Run:
     # secrets come from the gitignored .env (AI_*, MEALIE_*)
-    python app.py            # serves on http://0.0.0.0:7860 — LAN only!
+    python app.py            # http://0.0.0.0:7860  UI + /docs + /api/*
 """
 
 import os
@@ -254,11 +258,11 @@ def do_test_ai(base, model, key):
     return ("✅ " if ok else "❌ ") + msg
 
 
-def _apply_config(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user, auth_pass):
+def _apply_config(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user, auth_pass, api_key=""):
     """Validate + persist config to the data volume. Mealie URL/token + AI key
-    required; AI base/model fall back to defaults. Login optional — blank
-    username disables it; a blank password keeps the existing one. Raises
-    gr.Error on bad input."""
+    required; AI base/model fall back to defaults. Login and API key optional —
+    blank username disables login; a blank password keeps the existing one;
+    a blank API key keeps the existing one. Raises gr.Error on bad input."""
     updates = {
         "MEALIE_URL": (mealie_url or "").strip(),
         # secrets: blank → keep the existing stored value (never pre-filled in UI)
@@ -266,6 +270,8 @@ def _apply_config(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user
         "AI_API_KEY": (ai_key or "").strip() or config.get("AI_API_KEY"),
         "AI_BASE_URL": (ai_base or "").strip() or config.DEFAULTS["AI_BASE_URL"],
         "AI_MODEL": (ai_model or "").strip() or config.DEFAULTS["AI_MODEL"],
+        # API key: blank keeps existing (same pattern as other secrets)
+        "MIXER_API_KEY": (api_key or "").strip() or config.get("MIXER_API_KEY"),
     }
     missing = [k for k in ("MEALIE_URL", "MEALIE_TOKEN", "AI_API_KEY") if not updates[k]]
     if missing:
@@ -290,9 +296,9 @@ def _apply_config(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user
         raise gr.Error(f"Couldn't write config to {config.CONFIG_PATH}: {e}")
 
 
-def do_save_setup(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user, auth_pass):
+def do_save_setup(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user, auth_pass, api_key):
     """Setup-page save: persist, then prompt a restart to start the app."""
-    _apply_config(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user, auth_pass)
+    _apply_config(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user, auth_pass, api_key)
     gr.Info("Saved — restart the container to start.")
     return (
         "✅ **Saved.** Now **restart the container** to start using Mealie Mixer:\n\n"
@@ -300,10 +306,10 @@ def do_save_setup(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user
     )
 
 
-def do_save_settings(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user, auth_pass, redraw):
+def do_save_settings(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user, auth_pass, api_key, redraw):
     """Settings save: persist, apply Mealie/AI live, refresh the food list.
     (A login change still needs a restart — Gradio sets auth at launch.)"""
-    _apply_config(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user, auth_pass)
+    _apply_config(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user, auth_pass, api_key)
     _refresh_food_choices()  # Mealie may have changed
     gr.Info("Settings saved.")
     msg = "✅ Saved. Mealie/AI changes apply now. A **login** change needs a container restart."
@@ -435,6 +441,12 @@ with gr.Blocks(title="Mealie Mixer") as demo:
                                    value=config.get("MIXER_AUTH_USER"))
         set_auth_pass = gr.Textbox(label="Login password", type="password",
                                    placeholder="blank = keep current")
+        gr.Markdown("---")
+        gr.Markdown("### Agent API\nSet an API key to enable the `/api/extract` and "
+                    "`/api/push` endpoints (used by external bots/agents). "
+                    "Blank = API disabled.  Interactive docs at **[/docs](/docs)**.")
+        set_api_key = gr.Textbox(label="API key (MIXER_API_KEY)", type="password",
+                                 placeholder=_secret_ph("MIXER_API_KEY"))
         set_save = gr.Button("Save settings", variant="primary")
         set_status = gr.Markdown()
 
@@ -467,7 +479,7 @@ with gr.Blocks(title="Mealie Mixer") as demo:
     set_save.click(
         do_save_settings,
         [set_mealie_url, set_mealie_token, set_ai_key, set_ai_base, set_ai_model,
-         set_auth_user, set_auth_pass, redraw],
+         set_auth_user, set_auth_pass, set_api_key, redraw],
         [set_status, redraw],
     )
 
@@ -504,6 +516,12 @@ with gr.Blocks(title="Mealie Mixer — Setup") as setup_demo:
         su_auth_user = gr.Textbox(label="Username", value=config.get("MIXER_AUTH_USER"))
         su_auth_pass = gr.Textbox(label="Password", type="password",
                                   placeholder="leave blank to keep the current password")
+    with gr.Group():
+        gr.Markdown("### Agent API (optional)\nSet an API key to enable the REST API "
+                    "(`/api/extract`, `/api/push`) for external bots or agents. "
+                    "Leave blank to disable the API.")
+        su_api_key = gr.Textbox(label="API key", type="password",
+                                placeholder=_secret_ph("MIXER_API_KEY"))
     su_save = gr.Button("Save", variant="primary")
     su_status = gr.Markdown()
 
@@ -512,7 +530,7 @@ with gr.Blocks(title="Mealie Mixer — Setup") as setup_demo:
     su_save.click(
         do_save_setup,
         [su_mealie_url, su_mealie_token, su_ai_key, su_ai_base, su_ai_model,
-         su_auth_user, su_auth_pass],
+         su_auth_user, su_auth_pass, su_api_key],
         su_status,
     )
 
@@ -536,8 +554,18 @@ def _build_auth():
     return check
 
 
-if __name__ == "__main__":
-    # Gate on config: incomplete → setup page (no auth); complete → the app.
+def create_app():
+    from fastapi import FastAPI
+    from api import router as api_router
+
+    # ── FastAPI shell — hosts both the API and the Gradio UI ──────────────
+    app = FastAPI(
+        title="Mealie Mixer",
+        description="Recipe extraction + push API.  Interactive docs at /docs.",
+    )
+    app.include_router(api_router)
+
+    # ── Gate on config: same logic as before ──────────────────────────────
     if config.is_configured():
         auth = _build_auth()
         if auth:
@@ -548,5 +576,20 @@ if __name__ == "__main__":
         auth = None
         target = setup_demo
 
+    # Mount Gradio at root — preserves setup-page gating + browser login.
+    # API routes (/api/*) live above this mount, so they're always reachable
+    # (they have their own fail-closed auth via MIXER_API_KEY).
+    gr.mount_gradio_app(app, target, path="/", auth=auth)
+    return app
+
+fastapi_app = create_app()
+
+if __name__ == "__main__":
+    import uvicorn
     # LAN only — this app can write to Mealie. Do NOT expose to the internet.
-    target.launch(server_name="0.0.0.0", server_port=7860, auth=auth)
+    print("──────────────────────────────────────────────")
+    print("  Mealie Mixer running on http://0.0.0.0:7860")
+    print("  API docs:  http://0.0.0.0:7860/docs")
+    print("  Health:    http://0.0.0.0:7860/api/health")
+    print("──────────────────────────────────────────────")
+    uvicorn.run(fastapi_app, host="0.0.0.0", port=7860)

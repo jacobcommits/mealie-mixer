@@ -68,6 +68,9 @@ MEALIE_TOKEN=your-long-lived-mealie-token
 # Optional UI login — set BOTH to require a username/password; blank = no auth
 MIXER_AUTH_USER=
 MIXER_AUTH_PASS=
+
+# Optional: enable the REST API for external bots/agents; blank = API disabled
+MIXER_API_KEY=
 ```
 
 ### Run with Docker / Podman (recommended)
@@ -122,6 +125,51 @@ Settings are stored on the **`/data` volume**, so you do this once. Change them 
 ./venv/bin/python extract.py shot.jpg --lang English > recipe.json
 ./venv/bin/python extract.py --url https://example.com/recipe --lang English > recipe.json
 ./venv/bin/python push.py recipe.json
+```
+
+---
+
+## API (for bots / agents)
+
+Mealie Mixer exposes a REST API so an external agent (e.g. a Telegram bot) can drive extraction and push programmatically — no browser needed.
+
+**Enable it** by setting `MIXER_API_KEY` (env var, `.env`, or the Settings panel). The API is **disabled by default** (fail-closed: empty key → 503).
+
+Interactive docs (Swagger UI) are at **`/docs`** once the server is running.
+
+### Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/health` | none | `{"status": "ok", "configured": true}` |
+| `POST` | `/api/extract` | API key | Upload image(s) or a URL → structured recipe JSON |
+| `POST` | `/api/push` | API key | Recipe JSON → create in Mealie, return slug + URL |
+
+Auth: send `Authorization: Bearer <MIXER_API_KEY>` or `X-API-Key: <key>`.
+
+### Examples
+
+```bash
+# Health check (no auth)
+curl http://localhost:7860/api/health
+
+# Extract from an image
+curl -X POST http://localhost:7860/api/extract \
+  -H "Authorization: Bearer $MIXER_API_KEY" \
+  -F "files=@recipe-screenshot.jpg" \
+  -F "language=English"
+
+# Extract from a URL
+curl -X POST http://localhost:7860/api/extract \
+  -H "Authorization: Bearer $MIXER_API_KEY" \
+  -F "url=https://example.com/recipe" \
+  -F "language=English"
+
+# Push a recipe to Mealie
+curl -X POST http://localhost:7860/api/push \
+  -H "Authorization: Bearer $MIXER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Test", "ingredients": [{"quantity": 2, "unit": null, "food": "eggs"}], "instructions": ["Boil."]}'
 ```
 
 ---
