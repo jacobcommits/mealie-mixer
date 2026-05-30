@@ -15,6 +15,28 @@ def test_parse_qty():
     assert app._parse_qty("13") == 13.0
 
 
+def test_normalize_url():
+    # the real footgun: a doubled scheme → host parsed as 'http'
+    assert app._normalize_url("http://http://10.0.10.149:9925/") == "http://10.0.10.149:9925/"
+    assert app._normalize_url("https://https://x.com") == "https://x.com"
+    assert app._normalize_url("10.0.10.149:9925") == "http://10.0.10.149:9925"  # add scheme
+    assert app._normalize_url("http://10.0.10.149:9925") == "http://10.0.10.149:9925"  # untouched
+    assert app._normalize_url("  http://x  ") == "http://x"  # trimmed
+    assert app._normalize_url("") == ""
+
+
+def test_apply_config_normalizes_doubled_scheme(monkeypatch, tmp_path):
+    _isolate(monkeypatch, tmp_path)
+    app._apply_config("http://http://10.0.10.149:9925/", "tok", "key", "", "", "", "")
+    assert config.get("MEALIE_URL") == "http://10.0.10.149:9925/"
+
+
+def test_apply_config_rejects_invalid_url(monkeypatch, tmp_path):
+    _isolate(monkeypatch, tmp_path)
+    with pytest.raises(gr.Error):
+        app._apply_config("http://", "tok", "key", "", "", "", "")  # no host
+
+
 def _isolate(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(config, "CONFIG_PATH", str(tmp_path / "config.json"))

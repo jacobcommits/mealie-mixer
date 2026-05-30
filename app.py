@@ -29,6 +29,7 @@ Run:
 
 import os
 import tempfile
+from urllib.parse import urlparse
 
 # Opt out of Gradio's phone-home telemetry (must be set before importing gradio).
 os.environ.setdefault("GRADIO_ANALYTICS_ENABLED", "False")
@@ -242,9 +243,26 @@ def _secret_ph(key: str) -> str:
     return "leave blank to keep current" if config.get(key) else "required"
 
 
+def _normalize_url(url: str) -> str:
+    """Tidy a user-entered URL: trim, collapse an accidental doubled scheme
+    (http://http://… → http://…), and add http:// if no scheme was given.
+    Prevents a malformed URL parsing its host as 'http' and failing on push."""
+    url = (url or "").strip()
+    if not url:
+        return ""
+    low = url.lower()
+    for scheme in ("http://", "https://"):
+        while low.startswith(scheme + "http://") or low.startswith(scheme + "https://"):
+            url = url[len(scheme):]
+            low = url.lower()
+    if not low.startswith(("http://", "https://")):
+        url = "http://" + url
+    return url
+
+
 def do_test_mealie(url, token):
     # blank fields fall back to stored config, so you can test saved creds as-is
-    url = (url or "").strip() or config.get("MEALIE_URL")
+    url = _normalize_url(url) or config.get("MEALIE_URL")
     token = (token or "").strip() or config.get("MEALIE_TOKEN")
     ok, msg = test_mealie(url, token)
     return ("✅ " if ok else "❌ ") + msg
@@ -263,8 +281,11 @@ def _apply_config(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user
     required; AI base/model fall back to defaults. Login and API key optional —
     blank username disables login; a blank password keeps the existing one;
     a blank API key keeps the existing one. Raises gr.Error on bad input."""
+    mealie_url = _normalize_url(mealie_url)
+    if mealie_url and not urlparse(mealie_url).hostname:
+        raise gr.Error("Mealie URL looks invalid — use e.g. http://10.0.10.149:9925")
     updates = {
-        "MEALIE_URL": (mealie_url or "").strip(),
+        "MEALIE_URL": mealie_url,
         # secrets: blank → keep the existing stored value (never pre-filled in UI)
         "MEALIE_TOKEN": (mealie_token or "").strip() or config.get("MEALIE_TOKEN"),
         "AI_API_KEY": (ai_key or "").strip() or config.get("AI_API_KEY"),
