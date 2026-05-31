@@ -1,0 +1,92 @@
+:root{
+  --bg:#0f172a; --surface:#1e293b; --surface2:#273449; --border:#334155;
+  --text:#f1f5f9; --muted:#94a3b8; --accent:#3b82f6; --accent2:#60a5fa;
+  --ok:#10b981; --danger:#ef4444; --radius:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[x-cloak]{display:none!important}
+html,body{background:var(--bg);color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-text-size-adjust:100%}
+body{min-height:100dvh;padding-bottom:90px}
+
+.topbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;
+  justify-content:space-between;padding:14px 18px;
+  background:rgba(15,23,42,.85);backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--border)}
+.brand{font-weight:700;font-size:1.1rem}
+.link{color:var(--muted);text-decoration:none;font-size:1.3rem}
+
+.wrap{max-width:680px;margin:0 auto;padding:16px}
+.card{background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:18px;display:flex;flex-direction:column;gap:12px}
+.card h2{font-size:1.25rem}
+.card h3{font-size:.95rem;color:var(--muted);margin-top:8px;text-transform:uppercase;letter-spacing:.04em}
+.center{align-items:center;text-align:center;gap:14px;padding-top:40px}
+.muted{color:var(--muted)} .small{font-size:.85rem}
+.big{font-size:3rem}
+
+/* inputs */
+.input{width:100%;background:var(--surface2);color:var(--text);
+  border:1px solid var(--border);border-radius:10px;padding:12px 13px;
+  font-size:16px;outline:none;transition:border-color .15s}
+.input:focus{border-color:var(--accent)}
+textarea.input{resize:vertical;line-height:1.5}
+.input.title{font-size:1.15rem;font-weight:600}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row>*{flex:1;min-width:120px}
+.field{display:flex;flex-direction:column;gap:5px;font-size:.8rem;color:var(--muted)}
+
+/* file zone */
+.filezone{position:relative;display:flex;align-items:center;justify-content:center;
+  text-align:center;min-height:96px;padding:16px;border:2px dashed var(--border);
+  border-radius:12px;color:var(--muted);cursor:pointer;background:var(--surface2)}
+.filezone input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.or{text-align:center;color:var(--muted);font-size:.8rem}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  border:1px solid var(--border);background:var(--surface2);color:var(--text);
+  border-radius:11px;padding:13px 16px;font-size:1rem;font-weight:600;
+  cursor:pointer;text-decoration:none;transition:transform .08s,background .15s,opacity .15s}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent)}
+.btn.primary:hover{background:var(--accent2)}
+.btn.ghost{background:transparent}
+
+/* ingredients */
+.ings{display:flex;flex-direction:column;gap:8px}
+.ing{display:grid;grid-template-columns:64px 70px 1fr 1fr 34px;gap:6px;align-items:center}
+.ing .input{padding:10px}
+.ing .x{background:transparent;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer}
+.ing .x:active{color:var(--danger)}
+@media(max-width:520px){
+  .ing{grid-template-columns:56px 1fr 30px;grid-template-areas:"qty unit x" "food food food" "note note note"}
+  .ing .qty{grid-area:qty}.ing .unit{grid-area:unit}.ing .food{grid-area:food}
+  .ing .note{grid-area:note}.ing .x{grid-area:x}
+}
+
+.hero{width:100%;max-height:230px;object-fit:cover;border-radius:12px}
+
+/* sticky action bar */
+.actionbar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;
+  padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+  background:rgba(15,23,42,.92);backdrop-filter:blur(8px);border-top:1px solid var(--border)}
+.actionbar .btn{flex:1}
+.actionbar .primary{flex:2}
+
+.err{color:#fca5a5;font-size:.9rem}
+.toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);
+  background:var(--ok);color:#04231a;font-weight:600;padding:10px 18px;
+  border-radius:999px;z-index:20;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+
+.spinner{width:34px;height:34px;border:3px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+.spinner.big{width:52px;height:52px;border-width:4px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* full-screen loading overlay during extract/push */
+.overlay{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:16px;color:var(--text);
+  background:rgba(15,23,42,.80);backdrop-filter:blur(3px);font-weight:500}

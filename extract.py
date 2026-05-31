@@ -44,6 +44,11 @@ def build_user_prompt(target_language: str, user_note: str, source: str = "the i
     extra = f"\n\nExtra instructions from the user: {user_note}" if user_note.strip() else ""
     return f"""Extract every recipe in {source}.
 
+If several images are provided, they may be parts of the SAME recipe (e.g.
+ingredients on one screenshot, the method on another) — combine them into ONE
+recipe. Only return multiple recipes if the images clearly show genuinely
+different dishes.
+
 For each recipe, output:
 - name
 - description: one short line, or ""

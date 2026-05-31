@@ -44,6 +44,7 @@ DEFAULTS = {
     "MIXER_AUTH_PASS": "",        # legacy plaintext (env only)
     "MIXER_AUTH_PASS_HASH": "",   # hashed (written by the setup page)
     "MIXER_API_KEY": "",          # Phase 5: API key for /api/* endpoints (empty = API disabled)
+    "MIXER_SESSION_SECRET": "",   # Phase 6: signs browser session cookies (auto-generated)
 }
 
 _file_cfg: dict = {}

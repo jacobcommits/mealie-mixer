@@ -10,3 +10,4 @@ recipe-scrapers==15.11.0
 # Web server for the REST API (also pulled by gradio, but we import them directly)
 fastapi==0.136.3
 uvicorn==0.48.0
+itsdangerous==2.2.0   # signed-cookie sessions (Starlette SessionMiddleware) for the web UI login

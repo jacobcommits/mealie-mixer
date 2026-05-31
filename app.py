@@ -28,9 +28,7 @@ Run:
 """
 
 import os
-import secrets
 import tempfile
-from urllib.parse import urlparse
 
 # Opt out of Gradio's phone-home telemetry (must be set before importing gradio).
 os.environ.setdefault("GRADIO_ANALYTICS_ENABLED", "False")
@@ -39,6 +37,7 @@ import gradio as gr  # noqa: E402
 import httpx  # noqa: E402
 
 import config  # noqa: E402
+import core  # noqa: E402
 import push
 from extract import extract_recipes, extract_recipes_from_url, test_ai
 from push import fetch_food_names, push_recipe, test_mealie
@@ -245,20 +244,7 @@ def _secret_ph(key: str) -> str:
 
 
 def _normalize_url(url: str) -> str:
-    """Tidy a user-entered URL: trim, collapse an accidental doubled scheme
-    (http://http://… → http://…), and add http:// if no scheme was given.
-    Prevents a malformed URL parsing its host as 'http' and failing on push."""
-    url = (url or "").strip()
-    if not url:
-        return ""
-    low = url.lower()
-    for scheme in ("http://", "https://"):
-        while low.startswith(scheme + "http://") or low.startswith(scheme + "https://"):
-            url = url[len(scheme):]
-            low = url.lower()
-    if not low.startswith(("http://", "https://")):
-        url = "http://" + url
-    return url
+    return core.normalize_url(url)
 
 
 def do_test_mealie(url, token):
@@ -280,7 +266,7 @@ def do_test_ai(base, model, key):
 def do_generate_key():
     """Make a strong random API key and show it once so it can be copied to the
     agent. Fills the (masked) field too, so it's saved when you click Save."""
-    key = secrets.token_urlsafe(32)
+    key = core.generate_api_key()
     note = f"🔑 **Copy this now** for your agent (it'll be masked after save):\n\n`{key}`"
     return key, note
 
@@ -290,38 +276,14 @@ def _apply_config(mealie_url, mealie_token, ai_key, ai_base, ai_model, auth_user
     required; AI base/model fall back to defaults. Login and API key optional —
     blank username disables login; a blank password keeps the existing one;
     a blank API key keeps the existing one. Raises gr.Error on bad input."""
-    mealie_url = _normalize_url(mealie_url)
-    if mealie_url and not urlparse(mealie_url).hostname:
-        raise gr.Error("Mealie URL looks invalid — use e.g. http://10.0.10.149:9925")
-    updates = {
-        "MEALIE_URL": mealie_url,
-        # secrets: blank → keep the existing stored value (never pre-filled in UI)
-        "MEALIE_TOKEN": (mealie_token or "").strip() or config.get("MEALIE_TOKEN"),
-        "AI_API_KEY": (ai_key or "").strip() or config.get("AI_API_KEY"),
-        "AI_BASE_URL": (ai_base or "").strip() or config.DEFAULTS["AI_BASE_URL"],
-        "AI_MODEL": (ai_model or "").strip() or config.DEFAULTS["AI_MODEL"],
-        # API key: blank keeps existing (same pattern as other secrets)
-        "MIXER_API_KEY": (api_key or "").strip() or config.get("MIXER_API_KEY"),
-    }
-    missing = [k for k in ("MEALIE_URL", "MEALIE_TOKEN", "AI_API_KEY") if not updates[k]]
-    if missing:
-        raise gr.Error("Please fill in: " + ", ".join(missing))
-
-    auth_user = (auth_user or "").strip()
-    auth_pass = auth_pass or ""
-    if not auth_user:
-        updates["MIXER_AUTH_USER"] = ""        # "" reads back as unset (no auth)
-        updates["MIXER_AUTH_PASS_HASH"] = ""
-    elif auth_pass:
-        updates["MIXER_AUTH_USER"] = auth_user
-        updates["MIXER_AUTH_PASS_HASH"] = config.hash_password(auth_pass)
-    elif config.get("MIXER_AUTH_PASS_HASH"):
-        updates["MIXER_AUTH_USER"] = auth_user  # keep existing password
-    else:
-        raise gr.Error("Set a password for the login, or clear the username to disable it.")
-
     try:
-        config.save(updates)
+        core.apply_config(
+            mealie_url=mealie_url, mealie_token=mealie_token, ai_key=ai_key,
+            ai_base=ai_base, ai_model=ai_model, auth_user=auth_user,
+            auth_pass=auth_pass, api_key=api_key,
+        )
+    except core.ConfigError as e:
+        raise gr.Error(str(e))
     except OSError as e:
         raise gr.Error(f"Couldn't write config to {config.CONFIG_PATH}: {e}")
 
@@ -592,6 +554,9 @@ def _build_auth():
 
 def create_app():
     from fastapi import FastAPI
+    from fastapi.staticfiles import StaticFiles
+    from starlette.middleware.sessions import SessionMiddleware
+
     from api import router as api_router
 
     # ── FastAPI shell — hosts both the API and the Gradio UI ──────────────
@@ -599,6 +564,13 @@ def create_app():
         title="Mealie Mixer",
         description="Recipe extraction + push API.  Interactive docs at /docs.",
     )
+
+    # Signed-cookie sessions for the (Phase 6) web UI login. Uses a persisted
+    # secret if set (set MIXER_SESSION_SECRET to survive restarts), else a fresh
+    # per-process one (sessions just reset on restart — re-login).
+    secret = config.get("MIXER_SESSION_SECRET") or core.generate_api_key()
+    app.add_middleware(SessionMiddleware, secret_key=secret, same_site="lax", https_only=False)
+
     app.include_router(api_router)
 
     # ── Gate on config: same logic as before ──────────────────────────────
@@ -612,10 +584,21 @@ def create_app():
         auth = None
         target = setup_demo
 
-    # Mount Gradio at root — preserves setup-page gating + browser login.
-    # API routes (/api/*) live above this mount, so they're always reachable
-    # (they have their own fail-closed auth via MIXER_API_KEY).
-    gr.mount_gradio_app(app, target, path="/", auth=auth)
+    # Phase 6: the new Alpine UI is served at /; Gradio moves to /admin (kept as
+    # a fallback for setup/Settings until those are rebuilt natively in Stage 3).
+    gr.mount_gradio_app(app, target, path="/admin", auth=auth)
+
+    # Bare /admin → /admin/ (the static catch-all below would otherwise 404 it).
+    from fastapi.responses import RedirectResponse
+
+    @app.get("/admin", include_in_schema=False)
+    def _admin_redirect():
+        return RedirectResponse(url="/admin/")
+
+    # New frontend at / — mounted LAST so /api/*, /docs, and /admin take
+    # precedence over this catch-all. dir resolved next to this file (→ /app/static).
+    static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="ui")
     return app
 
 fastapi_app = create_app()

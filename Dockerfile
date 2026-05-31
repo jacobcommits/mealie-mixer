@@ -12,7 +12,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Just the pipeline modules — secrets come from env/volume at runtime, never baked in
-COPY config.py extract.py push.py api.py app.py ./
+COPY config.py core.py extract.py push.py api.py app.py ./
+COPY static/ ./static/
 
 # Config the setup page persists to (mount a volume here)
 ENV MIXER_DATA_DIR=/data

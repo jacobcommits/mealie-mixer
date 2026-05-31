@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Mealie Mixer</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script defer src="/app.js"></script>
+  <script defer src="/vendor/alpine.min.js"></script>
+</head>
+<body>
+<div id="app" x-data="mixer()" x-init="init()" x-cloak>
+
+  <header class="topbar">
+    <span class="brand">🍲 Mealie&nbsp;Mixer</span>
+    <a class="link" href="/admin/" title="Settings (admin)">⚙️</a>
+  </header>
+
+  <main class="wrap">
+
+    <!-- gate / loading -->
+    <template x-if="view === 'gate'">
+      <div class="center muted"><div class="spinner"></div><p>Loading…</p></div>
+    </template>
+
+    <!-- not configured -->
+    <template x-if="view === 'needs-setup'">
+      <div class="card center">
+        <h2>Not set up yet</h2>
+        <p class="muted">This instance needs its Mealie + AI details.</p>
+        <a class="btn" href="/admin/">Open setup →</a>
+      </div>
+    </template>
+
+    <!-- input -->
+    <template x-if="view === 'input'">
+      <div class="card">
+        <h2>Add a recipe</h2>
+        <label class="filezone">
+          <input type="file" accept="image/*" capture="environment" multiple
+                 @change="fileList = $event.target.files" />
+          <span x-text="fileList && fileList.length
+                  ? (fileList.length + ' image(s) selected')
+                  : '📷 Take a photo or choose screenshot(s)'"></span>
+        </label>
+        <div class="or">— or —</div>
+        <input class="input" type="url" placeholder="paste a recipe link" x-model="url" />
+        <div class="row">
+          <select class="input" x-model="language">
+            <template x-for="l in languages" :key="l"><option x-text="l"></option></template>
+          </select>
+          <input class="input" type="text" placeholder="extra note (optional)" x-model="prompt" />
+        </div>
+        <button class="btn primary" :disabled="loading || (!fileList?.length && !url.trim())"
+                @click="extract()">
+          <span x-show="!loading">Extract recipe</span>
+          <span x-show="loading">Extracting…</span>
+        </button>
+        <p class="err" x-show="error" x-text="error"></p>
+      </div>
+    </template>
+
+    <!-- review / edit -->
+    <template x-if="view === 'review'">
+      <div class="card">
+        <p class="muted small" x-show="queue.length" x-text="queue.length + ' more queued'"></p>
+        <img class="hero" x-show="recipe.image_url" :src="recipe.image_url" alt="" />
+        <input class="input title" placeholder="Recipe name" x-model="recipe.name" />
+        <textarea class="input" rows="2" placeholder="Description" x-model="recipe.description"></textarea>
+        <div class="row">
+          <label class="field"><span>Servings</span>
+            <input class="input" type="number" min="0" x-model="recipe.servings" /></label>
+          <label class="field"><span>Yield</span>
+            <input class="input" type="text" x-model="recipe.yield" /></label>
+        </div>
+
+        <h3>Ingredients</h3>
+        <div class="ings">
+          <template x-for="(ing, i) in recipe.ingredients" :key="i">
+            <div class="ing">
+              <input class="input qty" placeholder="qty" x-model="ing.quantity" />
+              <input class="input unit" placeholder="unit" x-model="ing.unit" />
+              <input class="input food" placeholder="food" list="foods-list" x-model="ing.food" />
+              <input class="input note" placeholder="note" x-model="ing.note" />
+              <button class="x" @click="recipe.ingredients.splice(i,1)" title="remove">✕</button>
+            </div>
+          </template>
+        </div>
+        <button class="btn ghost" @click="addIngredient()">+ add ingredient</button>
+
+        <h3>Instructions</h3>
+        <textarea class="input" rows="7" placeholder="one step per line"
+                  x-model="instructionsText"></textarea>
+
+        <p class="err" x-show="error" x-text="error"></p>
+      </div>
+    </template>
+
+    <!-- done -->
+    <template x-if="view === 'done'">
+      <div class="card center">
+        <div class="big">✅</div>
+        <h2 x-text="'Saved: ' + lastName"></h2>
+        <a class="btn" :href="lastUrl" target="_blank">Open in Mealie ↗</a>
+        <button class="btn ghost" @click="reset()">Add another</button>
+      </div>
+    </template>
+  </main>
+
+  <!-- sticky action bar (review only) -->
+  <footer class="actionbar" x-show="view === 'review'">
+    <button class="btn ghost" @click="discard()"
+            x-text="queue.length ? 'Discard this' : 'Discard'"></button>
+    <button class="btn primary" :disabled="loading" @click="push()">
+      <span x-show="!loading">✅ Approve &amp; push</span>
+      <span x-show="loading">Pushing…</span>
+    </button>
+  </footer>
+
+  <!-- loading overlay -->
+  <div class="overlay" x-show="loading" x-transition.opacity x-cloak>
+    <div class="spinner big"></div>
+    <p x-text="loadingMsg"></p>
+  </div>
+
+  <!-- toast -->
+  <div class="toast" x-show="toast" x-text="toast" x-transition></div>
+
+  <datalist id="foods-list">
+    <template x-for="f in foods" :key="f"><option :value="f"></option></template>
+  </datalist>
+</div>
+</body>
+</html>

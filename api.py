@@ -21,12 +21,13 @@ import os
 import tempfile
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Header, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
 import config
-from extract import extract_recipes, extract_recipes_from_url
-from push import push_recipe
+import core
+from extract import extract_recipes, extract_recipes_from_url, test_ai
+from push import fetch_food_names, push_recipe, test_mealie
 
 
 # ── Pydantic models ────────────────────────────────────────────────────
@@ -120,6 +121,41 @@ def require_api_key(
 
 # ── Routes ─────────────────────────────────────────────────────────────
 
+def require_access(request: Request,
+                   authorization: Annotated[str | None, Header()] = None,
+                   x_api_key: Annotated[str | None, Header()] = None) -> None:
+    """Allow a logged-in browser session OR a valid agent API key (used by the
+    endpoints that both the web UI and agents call)."""
+    if request.session.get("authed"):
+        return
+    require_api_key(authorization, x_api_key)  # raises 503/401 exactly as before
+
+
+def require_ui(request: Request) -> None:
+    """UI/config endpoints: allow a browser session, or open if no login is set."""
+    if request.session.get("authed"):
+        return
+    if not config.get("MIXER_AUTH_USER"):
+        return
+    raise HTTPException(status_code=401, detail="Log in required.")
+
+
+class LoginBody(BaseModel):
+    username: str = ""
+    password: str = ""
+
+
+class ConfigBody(BaseModel):
+    mealie_url: str = ""
+    mealie_token: str = ""
+    ai_key: str = ""
+    ai_base: str = ""
+    ai_model: str = ""
+    auth_user: str = ""
+    auth_pass: str = ""
+    api_key: str = ""
+
+
 router = APIRouter(prefix="/api")
 
 
@@ -132,7 +168,7 @@ def health():
 @router.post(
     "/extract",
     response_model=ExtractResponse,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_access)],
 )
 async def api_extract(
     files: list[UploadFile] | None = File(None),
@@ -189,7 +225,7 @@ async def api_extract(
 @router.post(
     "/push",
     response_model=PushResponse,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_access)],
 )
 def api_push(recipe: Recipe):
     """Push a recipe to Mealie.  Returns the slug and full URL."""
@@ -207,3 +243,94 @@ def api_push(recipe: Recipe):
 
     mealie_url = config.get("MEALIE_URL").rstrip("/")
     return PushResponse(slug=slug, url=f"{mealie_url}/g/home/r/{slug}")
+
+
+# ── Browser session + UI/config endpoints (Phase 6: powers the web UI) ──────
+
+@router.post("/login")
+def api_login(request: Request, body: LoginBody):
+    """Establish a browser session. If no login is configured, any call grants
+    an (open) session; otherwise the username + password are verified."""
+    user = config.get("MIXER_AUTH_USER")
+    if not user:
+        request.session["authed"] = True
+        return {"ok": True, "login_required": False}
+    if body.username == user and config.verify_password(
+        body.password or "", config.get("MIXER_AUTH_PASS_HASH")
+    ):
+        request.session["authed"] = True
+        request.session["user"] = user
+        return {"ok": True, "login_required": True}
+    raise HTTPException(status_code=401, detail="Invalid username or password.")
+
+
+@router.post("/logout")
+def api_logout(request: Request):
+    request.session.clear()
+    return {"ok": True}
+
+
+@router.get("/config")
+def api_get_config(request: Request):
+    """Gate info for the UI. Open returns only {configured, login_required};
+    settings fields (never secret *values*) are added once authed/open."""
+    authed = bool(request.session.get("authed")) or not config.get("MIXER_AUTH_USER")
+    out = {
+        "configured": config.is_configured(),
+        "login_required": bool(config.get("MIXER_AUTH_USER")),
+        "authed": authed,
+    }
+    if authed:
+        out.update({
+            "mealie_url": config.get("MEALIE_URL"),
+            "ai_base_url": config.get("AI_BASE_URL"),
+            "ai_model": config.get("AI_MODEL"),
+            "auth_user": config.get("MIXER_AUTH_USER"),
+            "has_mealie_token": bool(config.get("MEALIE_TOKEN")),
+            "has_ai_key": bool(config.get("AI_API_KEY")),
+            "has_api_key": bool(config.get("MIXER_API_KEY")),
+        })
+    return out
+
+
+@router.post("/config", dependencies=[Depends(require_ui)])
+def api_set_config(body: ConfigBody):
+    try:
+        core.apply_config(
+            mealie_url=body.mealie_url, mealie_token=body.mealie_token,
+            ai_key=body.ai_key, ai_base=body.ai_base, ai_model=body.ai_model,
+            auth_user=body.auth_user, auth_pass=body.auth_pass, api_key=body.api_key,
+        )
+    except core.ConfigError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Couldn't write config: {e}")
+    return {"ok": True, "configured": config.is_configured()}
+
+
+@router.post("/config/test-mealie", dependencies=[Depends(require_ui)])
+def api_test_mealie(body: ConfigBody):
+    url = core.normalize_url(body.mealie_url) or config.get("MEALIE_URL")
+    token = (body.mealie_token or "").strip() or config.get("MEALIE_TOKEN")
+    ok, message = test_mealie(url, token)
+    return {"ok": ok, "message": message}
+
+
+@router.post("/config/test-ai", dependencies=[Depends(require_ui)])
+def api_test_ai(body: ConfigBody):
+    base = (body.ai_base or "").strip() or config.get("AI_BASE_URL")
+    model = (body.ai_model or "").strip() or config.get("AI_MODEL")
+    key = (body.ai_key or "").strip() or config.get("AI_API_KEY")
+    ok, message = test_ai(base, model, key)
+    return {"ok": ok, "message": message}
+
+
+@router.post("/config/generate-key", dependencies=[Depends(require_ui)])
+def api_generate_key():
+    return {"key": core.generate_api_key()}
+
+
+@router.get("/foods", dependencies=[Depends(require_access)])
+def api_foods():
+    """Food names for the UI autocomplete (session or key auth)."""
+    return {"foods": fetch_food_names()}
