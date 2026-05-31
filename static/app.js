@@ -29,6 +29,7 @@ function mixer() {
 
     // ── gate / auth ─────────────────────────────────────────────────────
     async init() {
+      try { this.language = localStorage.getItem('mm-lang') || this.language; } catch (_) {}
       try { this.cfgInfo = await getJSON('/api/config'); }
       catch (_) { this.error = 'Could not reach the server.'; }
       if (!this.cfgInfo.configured) { this.prefillCfg(); this.view = 'setup'; return; }
@@ -42,6 +43,7 @@ function mixer() {
       try { this.recipeNames = (await getJSON('/api/recipe-names')).names || []; } catch (_) { this.recipeNames = []; }
       this.error = ''; this.view = 'input';
       this.restoreSession();
+      await this.maybeReadShare();
     },
     async doLogin() {
       this.error = ''; this.loading = true;
@@ -116,6 +118,7 @@ function mixer() {
     // ── recipe flow ─────────────────────────────────────────────────────
     async extract() {
       this.error = ''; this.loadingMsg = 'Reading your recipe…'; this.loading = true;
+      try { localStorage.setItem('mm-lang', this.language); } catch (_) {}   // remember for next time / share flow
       this.clearSourceImages();
       if (this.fileList && this.fileList.length) this.sourceImages = [...this.fileList].map(f => URL.createObjectURL(f));
       try {
@@ -175,6 +178,11 @@ function mixer() {
       for (const f of this.foods) { const fl = f.toLowerCase(); if (norm(f) === target || lev(lc, fl) <= 1) return f; }
       return '';
     },
+    foodStatus(name) {
+      const raw = (name || '').trim(); if (!raw) return '';
+      if (this.foods.some(f => f.toLowerCase() === raw.toLowerCase())) return 'exists';
+      return this.nearestFood(raw) ? 'near' : 'new';
+    },
     clearSourceImages() { this.sourceImages.forEach(u => { try { URL.revokeObjectURL(u); } catch (_) {} }); this.sourceImages = []; },
     saveSession() {
       try { localStorage.setItem('mm-session', JSON.stringify({ recipe: this.recipe, instructionsText: this.instructionsText, queue: this.queue })); } catch (_) {}
@@ -186,6 +194,34 @@ function mixer() {
         this.recipe = s.recipe; this.instructionsText = s.instructionsText || ''; this.queue = s.queue || [];
         this.view = 'review'; this.showToast('Restored your in-progress review');
       }
+    },
+    // ── Web Share Target: the SW stashed shared image(s)/link in a cache and
+    //    redirected here with ?shared=1; pull it into the input screen.
+    async maybeReadShare() {
+      if (!new URLSearchParams(location.search).has('shared')) return;
+      let got = false;
+      try { got = await this.readShare(); } catch (_) {}
+      try { history.replaceState({}, '', location.pathname); } catch (_) {}
+      if (got) { this.view = 'input'; this.showToast('Shared in — pick a language, then Extract'); }
+    },
+    async readShare() {
+      const cache = await caches.open('mm-share');
+      const metaRes = await cache.match('/__share_meta');
+      if (!metaRes) return false;
+      let meta = {}; try { meta = await metaRes.json(); } catch (_) {}
+      const files = [];
+      for (let i = 0; i < (meta.count || 0); i++) {
+        const fr = await cache.match('/__share_file_' + i);
+        if (!fr) continue;
+        const blob = await fr.blob();
+        files.push(new File([blob], fr.headers.get('x-filename') || ('shared-' + i + '.jpg'), { type: blob.type || 'image/jpeg' }));
+        await cache.delete('/__share_file_' + i);
+      }
+      await cache.delete('/__share_meta');
+      if (files.length) { this.fileList = files; this.url = ''; return true; }
+      const shared = (meta.url || meta.text || '').trim();
+      if (shared) { const m = shared.match(/https?:\/\/\S+/); this.url = m ? m[0] : shared; return true; }
+      return false;
     },
     async push() {
       if (this.nameExists() && !this._dupOk) { this.dupModal = true; return; }  // confirm duplicates

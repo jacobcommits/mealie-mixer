@@ -154,7 +154,9 @@
               <div class="ing">
                 <input class="input qty" placeholder="qty" x-model="ing.quantity" />
                 <input class="input unit" placeholder="unit" x-model="ing.unit" />
-                <input class="input food" placeholder="food" list="foods-list" x-model="ing.food" />
+                <input class="input food" placeholder="food" list="foods-list" x-model="ing.food"
+                       :class="ing.food &amp;&amp; ing.food.trim() ? 'fs-' + foodStatus(ing.food) : ''"
+                       :title="{exists:'Already in Mealie',near:'Near-match exists in Mealie',new:'New — will be created'}[foodStatus(ing.food)] || ''" />
                 <input class="input note" placeholder="note" x-model="ing.note" />
                 <button class="x" @click="recipe.ingredients.splice(i,1)" title="remove">✕</button>
               </div>
@@ -165,6 +167,7 @@
           </template>
         </div>
         <button class="btn ghost" @click="addIngredient()">+ add ingredient</button>
+        <p class="legend">🟢 in Mealie · 🟡 near-match · 🔵 new food</p>
         <h3>Instructions</h3>
         <textarea class="input" rows="7" placeholder="one step per line" x-model="instructionsText"></textarea>
         <p class="err" x-show="error" x-text="error"></p>

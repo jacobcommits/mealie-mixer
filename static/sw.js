@@ -2,7 +2,7 @@
 // offline. NETWORK-FIRST (so updates always land when online); the cache is
 // just the offline fallback. Never touches /api, /docs, /admin.
 
-const CACHE = 'mealie-mixer-v1';
+const CACHE = 'mealie-mixer-v2';
 const SHELL = [
   '/', '/app.js', '/style.css', '/vendor/alpine.min.js',
   '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png',
@@ -20,8 +20,33 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// Web Share Target: the OS share sheet POSTs the shared image(s)/link here.
+// The page can't read a POST body, so stash it in a cache and redirect the
+// installed app to /?shared=1, where app.js picks it up.
+async function handleShare(req) {
+  try {
+    const form = await req.formData();
+    const cache = await caches.open('mm-share');
+    const files = form.getAll('files').filter((f) => f && f.size);
+    await cache.put('/__share_meta', new Response(JSON.stringify({
+      text: form.get('text') || '', url: form.get('url') || '', count: files.length,
+    }), { headers: { 'content-type': 'application/json' } }));
+    for (let i = 0; i < files.length; i++) {
+      await cache.put('/__share_file_' + i, new Response(files[i], {
+        headers: { 'content-type': files[i].type || 'image/jpeg', 'x-filename': files[i].name || ('shared-' + i + '.jpg') },
+      }));
+    }
+  } catch (_) { /* fall through to the app either way */ }
+  return Response.redirect('/?shared=1', 303);
+}
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
+  const sUrl = new URL(req.url);
+  if (req.method === 'POST' && sUrl.origin === location.origin && sUrl.pathname === '/share-target') {
+    e.respondWith(handleShare(req));
+    return;
+  }
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
