@@ -88,7 +88,7 @@
       <div class="card">
         <h2>Add a recipe</h2>
         <label class="filezone">
-          <input type="file" accept="image/*" capture="environment" multiple
+          <input type="file" accept="image/*" multiple
                  @change="fileList = $event.target.files" />
           <span x-text="fileList && fileList.length
                   ? (fileList.length + ' image(s) selected')
@@ -115,7 +115,7 @@
         <img class="hero" x-show="photoPreview || recipe.image_url" :src="photoPreview || recipe.image_url" alt="" />
         <div class="photorow">
           <label class="photopick">
-            <input type="file" accept="image/*" capture="environment" @change="pickPhoto($event)" />
+            <input type="file" accept="image/*" @change="pickPhoto($event)" />
             <span x-text="photoFile ? '📷 Photo selected — tap to change' : '📷 Add a dish photo (optional)'"></span>
           </label>
           <button class="x" x-show="photoFile" @click="clearPhoto()" title="remove photo">✕</button>
