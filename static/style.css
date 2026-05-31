@@ -86,6 +86,15 @@ small{font-size:.8rem;line-height:1.4}
 
 .hero{width:100%;max-height:230px;object-fit:cover;border-radius:12px}
 
+/* category chips */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips:empty{display:none}
+.chip{display:inline-flex;align-items:center;gap:7px;background:var(--surface2);
+  border:1px solid var(--border);border-radius:999px;padding:6px 8px 6px 13px;font-size:.9rem}
+.chip .cx{background:none;border:none;color:var(--muted);cursor:pointer;
+  font-size:.8rem;line-height:1;padding:2px}
+.chip .cx:active{color:var(--danger)}
+
 /* sticky action bar */
 .actionbar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;
   padding:12px 16px calc(12px + env(safe-area-inset-bottom));

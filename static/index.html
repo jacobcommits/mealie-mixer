@@ -128,6 +128,14 @@
           <label class="field"><span>Yield</span>
             <input class="input" type="text" x-model="recipe.yield" /></label>
         </div>
+        <h3>Categories</h3>
+        <div class="chips">
+          <template x-for="(c, i) in recipe.categories" :key="i">
+            <span class="chip"><span x-text="c"></span><button class="cx" @click="removeCategory(i)" title="remove">✕</button></span>
+          </template>
+        </div>
+        <input class="input" type="text" placeholder="add a category" list="categories-list"
+               x-model="categoryInput" @change="addCategory()" @keydown.enter.prevent="addCategory()" />
         <h3>Ingredients</h3>
         <div class="ings">
           <template x-for="(ing, i) in recipe.ingredients" :key="i">
@@ -170,6 +178,9 @@
 
   <datalist id="foods-list">
     <template x-for="f in foods" :key="f"><option :value="f"></option></template>
+  </datalist>
+  <datalist id="categories-list">
+    <template x-for="c in categories" :key="c"><option :value="c"></option></template>
   </datalist>
 </div>
 

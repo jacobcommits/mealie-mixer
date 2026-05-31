@@ -93,6 +93,21 @@ def fetch_food_names() -> list[str]:
         return sorted({it["name"] for it in r.json().get("items", []) if it.get("name")})
 
 
+def fetch_category_names() -> list[str]:
+    """All existing Mealie category names, sorted. Feeds the recipe-categories
+    autocomplete in review AND the extraction prompt (so the AI reuses existing
+    categories instead of spawning near-dupes). Returns [] if Mealie is unset."""
+    url, token = _mealie()
+    if not (url and token):
+        return []
+    with httpx.Client(
+        base_url=url, headers={"Authorization": f"Bearer {token}"}, timeout=30
+    ) as client:
+        r = client.get("/api/organizers/categories", params={"perPage": -1})
+        r.raise_for_status()
+        return sorted({it["name"] for it in r.json().get("items", []) if it.get("name")})
+
+
 def test_mealie(url: str, token: str) -> tuple[bool, str]:
     """Check a Mealie URL + token by hitting /api/users/self. Returns
     (ok, message). Used by the setup/settings page's Test button."""
@@ -272,6 +287,19 @@ def push_recipe(recipe: dict, client: httpx.Client | None = None, structured: bo
                 f"/api/recipes/{slug}",
                 json={"recipeInstructions": instructions},
             )
+            r.raise_for_status()
+
+        # 5. Categories — its own PATCH. Unlike tags, recipeCategory PATCHes
+        #    cleanly (verified live). Resolve-or-create each name against
+        #    /api/organizers/categories — same pattern as foods/units.
+        category_names = [c for c in (recipe.get("categories") or []) if c and str(c).strip()]
+        if category_names:
+            cat_lookup = _load_lookup(client, "/api/organizers/categories")
+            cat_objs = [
+                _resolve(client, "/api/organizers/categories", "category", name, cat_lookup)
+                for name in category_names
+            ]
+            r = client.patch(f"/api/recipes/{slug}", json={"recipeCategory": cat_objs})
             r.raise_for_status()
 
         # Tags intentionally skipped — see CLAUDE.md landmine.

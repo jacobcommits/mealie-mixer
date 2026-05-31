@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 import config
 import core
 from extract import extract_recipes, extract_recipes_from_url, test_ai
-from push import fetch_food_names, push_recipe, test_mealie, upload_recipe_image
+from push import fetch_category_names, fetch_food_names, push_recipe, test_mealie, upload_recipe_image
 
 
 # ── Pydantic models ────────────────────────────────────────────────────
@@ -56,6 +56,7 @@ class Recipe(BaseModel):
     ingredients: list[Ingredient] = []
     instructions: list[str] = []
     tags: list[str] = []
+    categories: list[str] = []
     image_url: str | None = None
 
 
@@ -181,11 +182,19 @@ async def api_extract(
     Accepts ``multipart/form-data`` with one or more image ``files``, or a
     ``url`` field pointing at a recipe page.  Returns structured JSON.
     """
+    # Feed the user's existing Mealie categories to the prompt so the AI reuses
+    # them instead of spawning near-dupes. Fail-soft: empty if Mealie's unreachable.
+    try:
+        known_categories = fetch_category_names()
+    except Exception:
+        known_categories = []
+
     tmp_paths: list[str] = []
     try:
         if url and url.strip():
             recipes = extract_recipes_from_url(
                 url.strip(), user_note=prompt, target_language=language,
+                known_categories=known_categories,
             )
         elif files:
             for f in files:
@@ -196,6 +205,7 @@ async def api_extract(
                 tmp_paths.append(path)
             recipes = extract_recipes(
                 tmp_paths, user_note=prompt, target_language=language,
+                known_categories=known_categories,
             )
         else:
             raise HTTPException(
@@ -335,6 +345,12 @@ def api_generate_key():
 def api_foods():
     """Food names for the UI autocomplete (session or key auth)."""
     return {"foods": fetch_food_names()}
+
+
+@router.get("/categories", dependencies=[Depends(require_access)])
+def api_categories():
+    """Category names for the review-step autocomplete (session or key auth)."""
+    return {"categories": fetch_category_names()}
 
 
 @router.put("/recipe-image/{slug}", dependencies=[Depends(require_access)])
