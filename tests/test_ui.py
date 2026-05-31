@@ -16,10 +16,10 @@ def test_static_assets_served():
     assert c.get("/vendor/alpine.min.js").status_code == 200
 
 
-def test_admin_redirects_to_gradio():
-    c = TestClient(app.fastapi_app, follow_redirects=False)
-    assert c.get("/admin").status_code in (307, 308)   # → /admin/
-    assert c.get("/admin/").status_code == 200
+def test_admin_gone():
+    # Gradio was removed in Stage 4 — /admin no longer exists
+    c = TestClient(app.fastapi_app)
+    assert c.get("/admin/").status_code == 404
 
 
 def test_api_and_docs_intact():

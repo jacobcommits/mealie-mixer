@@ -30,13 +30,16 @@ screenshot / link  →  extract (LLM)  →  editable review  →  push to Mealie
                        structure          autocomplete)        ingredients + photo
 ```
 
-Three modules, kept UI-agnostic so the pipeline is reusable:
+Modules, kept UI-agnostic so the pipeline is reusable:
 
 | File | Role |
 |------|------|
 | `extract.py` | Extraction core — images or URL → structured recipe JSON (vision LLM / `recipe-scrapers`) |
 | `push.py` | Mealie side — create recipe, resolve/create foods + units, attach photo |
-| `app.py` | Gradio review UI — imports the two above |
+| `core.py` / `config.py` | Config layer (env → volume → default) + validation |
+| `api.py` | FastAPI REST API — `/api/extract`, `/api/push`, config/login/foods |
+| `app.py` | Thin FastAPI server — mounts the API + the static web UI (`static/`) |
+| `static/` | Mobile-first web UI (Alpine.js, no build step) + PWA |
 
 ---
 

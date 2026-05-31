@@ -1,13 +1,13 @@
 # Mealie Mixer — pinned to the versions verified working together.
 # Direct deps only; pip resolves the rest.
-gradio==6.15.2
 openai==2.38.0
 pillow==12.2.0
 httpx==0.28.1
 pydantic==2.13.4
 python-dotenv==1.2.2
 recipe-scrapers==15.11.0
-# Web server for the REST API (also pulled by gradio, but we import them directly)
+# Web server: FastAPI + uvicorn host the REST API and the static web UI.
 fastapi==0.136.3
 uvicorn==0.48.0
-itsdangerous==2.2.0   # signed-cookie sessions (Starlette SessionMiddleware) for the web UI login
+python-multipart==0.0.29   # FastAPI multipart/form-data (/api/extract uploads)
+itsdangerous==2.2.0        # signed-cookie sessions (Starlette SessionMiddleware) for the web UI login

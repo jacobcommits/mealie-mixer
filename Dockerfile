@@ -2,8 +2,7 @@
 # (pillow, lxml/recipe-scrapers, gradio). The code uses no 3.13/3.14 features.
 FROM python:3.12-slim
 
-ENV PYTHONUNBUFFERED=1 \
-    GRADIO_ANALYTICS_ENABLED=False
+ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
