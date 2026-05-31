@@ -2,7 +2,7 @@
 
 Turn a recipe **screenshot** or **link** into a clean, translated, fully-structured recipe in your [Mealie](https://mealie.io/) collection — with a **human review step before anything is saved**.
 
-Point it at a photo of a recipe (even in another language) or a recipe URL. A vision/text LLM reads it, translates it, converts amounts to metric, and splits every ingredient into `quantity / unit / food / note`. You review and edit the result in a web UI, then push it to Mealie with one click — foods and units resolved into real, scalable Mealie entries, and the dish photo attached.
+Point it at a photo of a recipe (even in another language) or a recipe URL. A vision/text LLM reads it, translates it, converts amounts to metric, and splits every ingredient into `quantity / unit / food / note`. You review and edit the result in a web UI, then push it to Mealie with one click — foods and units resolved into real, scalable Mealie entries, categories assigned, and the dish photo attached.
 
 > Built for self-hosters who collect recipes from foreign-language blogs and social posts and want them landing in Mealie cleanly, without hand-typing.
 
@@ -15,7 +15,8 @@ Point it at a photo of a recipe (even in another language) or a recipe URL. A vi
 - **Structured ingredients:** each ingredient becomes `quantity / unit / food / note`, so recipes **scale** in Mealie and foods stay clean and reusable.
 - **Review before save:** an editable preview (name, description, servings, yield, ingredients, steps) — **nothing is written to Mealie until you click Approve.**
 - **Food autocomplete:** food fields autocomplete from your existing Mealie foods, so you snap variants ("black pepper") onto an existing food ("pepper") instead of creating near-duplicates.
-- **Dish photo:** URL imports grab the recipe's photo and attach it to the Mealie recipe.
+- **Categories:** the AI classifies each recipe, **reusing your existing Mealie categories** when one fits and proposing a new one only when none do. You edit them (chips + autocomplete) in review; they're resolved-or-created on push.
+- **Dish photo:** URL imports grab the recipe's photo automatically, and you can **pick or snap a photo for any recipe during review** (handy for text-only screenshots) — Mealie resizes and thumbnails it.
 - **Multiple recipes:** if a screenshot/link contains several recipes, they queue up and you review them one at a time.
 
 It's **one LLM call** per recipe — extraction, translation, and structuring all happen in that single call.
@@ -27,7 +28,7 @@ It's **one LLM call** per recipe — extraction, translation, and structuring al
 ```
 screenshot / link  →  extract (LLM)  →  editable review  →  push to Mealie
                        translate +        (you edit /          create + structured
-                       structure          autocomplete)        ingredients + photo
+                       structure          autocomplete)        ingredients, categories + photo
 ```
 
 Modules, kept UI-agnostic so the pipeline is reusable:
@@ -35,7 +36,7 @@ Modules, kept UI-agnostic so the pipeline is reusable:
 | File | Role |
 |------|------|
 | `extract.py` | Extraction core — images or URL → structured recipe JSON (vision LLM / `recipe-scrapers`) |
-| `push.py` | Mealie side — create recipe, resolve/create foods + units, attach photo |
+| `push.py` | Mealie side — create recipe, resolve/create foods + units + categories, attach photo |
 | `core.py` / `config.py` | Config layer (env → volume → default) + validation |
 | `api.py` | FastAPI REST API — `/api/extract`, `/api/push`, config/login/foods |
 | `app.py` | Thin FastAPI server — mounts the API + the static web UI (`static/`) |
@@ -119,7 +120,7 @@ Settings are stored on the **`/data` volume**, so you do this once. Change them 
 1. Upload a recipe screenshot **or** paste a recipe link.
 2. (Optional) add instructions ("no mushrooms") and pick the output language.
 3. Click **Extract recipe**.
-4. Review and edit the structured preview — fix anything the model got wrong, snap foods onto existing ones via the dropdowns, clear a quantity to leave it blank.
+4. Review and edit the structured preview — fix anything the model got wrong, snap foods onto existing ones via the dropdowns, adjust the suggested categories, optionally add a dish photo, clear a quantity to leave it blank.
 5. Click **Approve & push to Mealie**. Done.
 
 **CLI** (no UI):
@@ -174,7 +175,7 @@ curl -X POST http://localhost:7860/api/extract \
 curl -X POST http://localhost:7860/api/push \
   -H "Authorization: Bearer $MIXER_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"name": "Test", "ingredients": [{"quantity": 2, "unit": null, "food": "eggs"}], "instructions": ["Boil."]}'
+  -d '{"name": "Test", "categories": ["Breakfast"], "ingredients": [{"quantity": 2, "unit": null, "food": "eggs"}], "instructions": ["Boil."]}'
 ```
 
 ---

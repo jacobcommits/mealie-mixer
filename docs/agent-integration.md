@@ -16,7 +16,8 @@ Replace `MIXER_HOST` with your instance, e.g. `http://192.168.1.50:7860`.
 1. User sends a recipe **screenshot** (or **link**).
 2. Agent calls `POST /api/extract` → structured recipe JSON.
 3. Agent **shows the recipe to the user** (name, servings, ingredients with
-   quantities) and asks if it's right — it can edit quantities, foods, etc.
+   quantities, suggested categories) and asks if it's right — it can edit
+   quantities, foods, categories, etc.
 4. **Only after the user confirms**, agent calls `POST /api/push`.
 5. Agent shares the returned Mealie recipe URL.
 
@@ -60,11 +61,18 @@ curl -X POST MIXER_HOST/api/push \
   ],
   "instructions": ["Boil the eggs.", "Mix and season."],
   "tags": ["breakfast"],
+  "categories": ["Breakfast"],
   "image_url": "https://..."
 }
 ```
 `quantity: null` = "to taste" (no amount). The recipe scales in Mealie, so
 quantities matter — confirm them with the user.
+
+`categories` — `/api/extract` suggests these, **reusing the user's existing
+Mealie categories** where one fits and proposing a new name only when none do.
+Show them to the user to confirm/edit; whatever you send in the `/api/push` body
+is resolved-or-created and attached. (`tags` are accepted but currently **not**
+written to Mealie — a Mealie v3 PATCH bug.)
 
 ## Errors
 - `401` — missing/invalid API key
