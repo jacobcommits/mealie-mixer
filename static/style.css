@@ -16,6 +16,8 @@ body{min-height:100dvh;padding-bottom:90px}
   border-bottom:1px solid var(--border)}
 .brand{font-weight:700;font-size:1.1rem}
 .link{color:var(--muted);text-decoration:none;font-size:1.3rem}
+.iconbtn{background:none;border:none;color:var(--muted);font-size:1.3rem;cursor:pointer;line-height:1}
+.iconbtn:active{transform:scale(.92)}
 
 .wrap{max-width:680px;margin:0 auto;padding:16px}
 .card{background:var(--surface);border:1px solid var(--border);
@@ -54,6 +56,12 @@ textarea.input{resize:vertical;line-height:1.5}
 .btn.primary{background:var(--accent);border-color:var(--accent)}
 .btn.primary:hover{background:var(--accent2)}
 .btn.ghost{background:transparent}
+.btn.sm{padding:8px 13px;font-size:.85rem;align-self:flex-start}
+
+small{font-size:.8rem;line-height:1.4}
+.warn{color:#fbbf24}
+.ok{color:#34d399}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;color:var(--accent2);font-size:.78rem}
 
 /* ingredients */
 .ings{display:flex;flex-direction:column;gap:8px}

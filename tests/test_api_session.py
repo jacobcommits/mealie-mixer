@@ -36,6 +36,13 @@ def test_set_config_via_api(monkeypatch, tmp_path):
     assert config.get("MEALIE_URL") == "http://m:9925"
 
 
+def test_config_reports_env_pinned(monkeypatch, tmp_path):
+    _isolate(monkeypatch, tmp_path, {"MEALIE_URL": "http://m", "MEALIE_TOKEN": "t", "AI_API_KEY": "k"})
+    monkeypatch.setenv("MIXER_API_KEY", "from-env")   # pinned by env → overrides Settings
+    j = TestClient(app.fastapi_app).get("/api/config").json()
+    assert "MIXER_API_KEY" in j.get("env_pinned", [])
+
+
 def test_login_required_flow(monkeypatch, tmp_path):
     _isolate(monkeypatch, tmp_path, {
         "MIXER_AUTH_USER": "admin",

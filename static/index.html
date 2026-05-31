@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0f172a" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <title>Mealie Mixer</title>
   <link rel="stylesheet" href="/style.css" />
   <script defer src="/app.js"></script>
@@ -13,8 +15,9 @@
 <div id="app" x-data="mixer()" x-init="init()" x-cloak>
 
   <header class="topbar">
-    <span class="brand">🍲 Mealie&nbsp;Mixer</span>
-    <a class="link" href="/admin/" title="Settings (admin)">⚙️</a>
+    <span class="brand">🍲&nbsp;Mealie&nbsp;Mixer</span>
+    <button class="iconbtn" x-show="['input','review','done'].includes(view)"
+            @click="openSettings()" title="Settings">⚙️</button>
   </header>
 
   <main class="wrap">
@@ -24,12 +27,59 @@
       <div class="center muted"><div class="spinner"></div><p>Loading…</p></div>
     </template>
 
-    <!-- not configured -->
-    <template x-if="view === 'needs-setup'">
-      <div class="card center">
-        <h2>Not set up yet</h2>
-        <p class="muted">This instance needs its Mealie + AI details.</p>
-        <a class="btn" href="/admin/">Open setup →</a>
+    <!-- login -->
+    <template x-if="view === 'login'">
+      <div class="card">
+        <h2>Sign in</h2>
+        <input class="input" type="text" placeholder="Username" x-model="loginUser" @keydown.enter="doLogin()" />
+        <input class="input" type="password" placeholder="Password" x-model="loginPass" @keydown.enter="doLogin()" />
+        <button class="btn primary" :disabled="loading" @click="doLogin()">Log in</button>
+        <p class="err" x-show="error" x-text="error"></p>
+      </div>
+    </template>
+
+    <!-- setup / settings (shared config form) -->
+    <template x-if="view === 'setup' || view === 'settings'">
+      <div class="card">
+        <h2 x-text="view === 'setup' ? 'First-time setup' : 'Settings'"></h2>
+        <p class="muted small" x-show="view === 'setup'">Enter your Mealie + AI details to get started.</p>
+
+        <h3>Mealie</h3>
+        <input class="input" type="text" placeholder="Mealie URL (http://host:9925)" x-model="cfg.mealie_url" />
+        <small class="warn" x-show="pinned('MEALIE_URL')">⚠ set by an env var — Settings won't change it</small>
+        <input class="input" type="password" x-model="cfg.mealie_token"
+               :placeholder="secretPh('MEALIE')" />
+        <small class="warn" x-show="pinned('MEALIE_TOKEN')">⚠ token set by an env var</small>
+        <button class="btn ghost sm" @click="testMealie()">Test Mealie</button>
+        <small :class="mealieTest.ok ? 'ok' : 'err'" x-text="mealieTest.msg"></small>
+
+        <h3>AI backend</h3>
+        <input class="input" type="password" x-model="cfg.ai_key" :placeholder="secretPh('AI')" />
+        <small class="warn" x-show="pinned('AI_API_KEY')">⚠ AI key set by an env var</small>
+        <input class="input" type="text" placeholder="AI base URL" x-model="cfg.ai_base" />
+        <input class="input" type="text" placeholder="AI model" x-model="cfg.ai_model" />
+        <button class="btn ghost sm" @click="testAi()">Test AI (≈1 token)</button>
+        <small :class="aiTest.ok ? 'ok' : 'err'" x-text="aiTest.msg"></small>
+
+        <h3>Login (optional)</h3>
+        <input class="input" type="text" placeholder="Username (blank = no login)" x-model="cfg.auth_user" />
+        <input class="input" type="password" placeholder="Password (blank = keep)" x-model="cfg.auth_pass" />
+
+        <h3>Agent API key (optional)</h3>
+        <input class="input" type="password" x-model="cfg.api_key" :placeholder="secretPh('MIXER_API')" />
+        <small class="warn" x-show="pinned('MIXER_API_KEY')">⚠ API key set by an env var</small>
+        <button class="btn ghost sm" @click="genKey()">🎲 Generate key</button>
+        <small class="mono" x-show="genKeyMsg" x-text="genKeyMsg"></small>
+
+        <button class="btn primary" :disabled="loading" @click="saveConfig()"
+                x-text="view === 'setup' ? 'Save & start' : 'Save settings'"></button>
+        <p class="muted small" x-show="cfgMsg" x-text="cfgMsg"></p>
+        <p class="err" x-show="error" x-text="error"></p>
+
+        <div class="row" x-show="view === 'settings'">
+          <button class="btn ghost" @click="afterAuth()">← Back</button>
+          <button class="btn ghost" x-show="cfgInfo.login_required" @click="logout()">Log out</button>
+        </div>
       </div>
     </template>
 
@@ -53,10 +103,7 @@
           <input class="input" type="text" placeholder="extra note (optional)" x-model="prompt" />
         </div>
         <button class="btn primary" :disabled="loading || (!fileList?.length && !url.trim())"
-                @click="extract()">
-          <span x-show="!loading">Extract recipe</span>
-          <span x-show="loading">Extracting…</span>
-        </button>
+                @click="extract()">Extract recipe</button>
         <p class="err" x-show="error" x-text="error"></p>
       </div>
     </template>
@@ -74,7 +121,6 @@
           <label class="field"><span>Yield</span>
             <input class="input" type="text" x-model="recipe.yield" /></label>
         </div>
-
         <h3>Ingredients</h3>
         <div class="ings">
           <template x-for="(ing, i) in recipe.ingredients" :key="i">
@@ -88,11 +134,8 @@
           </template>
         </div>
         <button class="btn ghost" @click="addIngredient()">+ add ingredient</button>
-
         <h3>Instructions</h3>
-        <textarea class="input" rows="7" placeholder="one step per line"
-                  x-model="instructionsText"></textarea>
-
+        <textarea class="input" rows="7" placeholder="one step per line" x-model="instructionsText"></textarea>
         <p class="err" x-show="error" x-text="error"></p>
       </div>
     </template>
@@ -108,28 +151,26 @@
     </template>
   </main>
 
-  <!-- sticky action bar (review only) -->
   <footer class="actionbar" x-show="view === 'review'">
-    <button class="btn ghost" @click="discard()"
-            x-text="queue.length ? 'Discard this' : 'Discard'"></button>
-    <button class="btn primary" :disabled="loading" @click="push()">
-      <span x-show="!loading">✅ Approve &amp; push</span>
-      <span x-show="loading">Pushing…</span>
-    </button>
+    <button class="btn ghost" @click="discard()" x-text="queue.length ? 'Discard this' : 'Discard'"></button>
+    <button class="btn primary" :disabled="loading" @click="push()">✅ Approve &amp; push</button>
   </footer>
 
-  <!-- loading overlay -->
   <div class="overlay" x-show="loading" x-transition.opacity x-cloak>
-    <div class="spinner big"></div>
-    <p x-text="loadingMsg"></p>
+    <div class="spinner big"></div><p x-text="loadingMsg"></p>
   </div>
-
-  <!-- toast -->
   <div class="toast" x-show="toast" x-text="toast" x-transition></div>
 
   <datalist id="foods-list">
     <template x-for="f in foods" :key="f"><option :value="f"></option></template>
   </datalist>
 </div>
+
+<script>
+  // PWA: register the service worker (best-effort)
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  }
+</script>
 </body>
 </html>

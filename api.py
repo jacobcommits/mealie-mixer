@@ -289,6 +289,7 @@ def api_get_config(request: Request):
             "has_mealie_token": bool(config.get("MEALIE_TOKEN")),
             "has_ai_key": bool(config.get("AI_API_KEY")),
             "has_api_key": bool(config.get("MIXER_API_KEY")),
+            "env_pinned": config.env_pinned(),   # keys set via env (override Settings)
         })
     return out
 

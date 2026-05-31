@@ -100,6 +100,13 @@ def is_configured() -> bool:
     return bool(get("AI_API_KEY") and get("MEALIE_URL") and get("MEALIE_TOKEN"))
 
 
+def env_pinned() -> list[str]:
+    """Managed keys currently set (non-empty) via an environment variable — these
+    take precedence over the volume config, so the Settings page can't change
+    them. Lets the UI warn instead of silently no-op'ing a save."""
+    return [k for k in DEFAULTS if os.environ.get(k)]
+
+
 # ── Password hashing (stdlib only) ──────────────────────────────────────────
 def hash_password(password: str, iterations: int = 200_000) -> str:
     """PBKDF2-SHA256 with a random salt. Returns a self-describing string so
