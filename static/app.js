@@ -17,6 +17,7 @@ function mixer() {
     fileList: null, url: '', language: 'English', prompt: '',
     // review
     recipe: emptyRecipe(), instructionsText: '', queue: [],
+    photoFile: null, photoPreview: '',
     // done
     lastName: '', lastUrl: '',
     // ui
@@ -121,7 +122,18 @@ function mixer() {
       } catch (e) { this.error = String(e.message || e); }
       finally { this.loading = false; }
     },
+    pickPhoto(e) {
+      const f = e.target.files && e.target.files[0];
+      this.clearPhoto();
+      if (f) { this.photoFile = f; this.photoPreview = URL.createObjectURL(f); }
+    },
+    clearPhoto() {
+      if (this.photoPreview) URL.revokeObjectURL(this.photoPreview);
+      this.photoFile = null; this.photoPreview = '';
+    },
+
     loadRecipe(r) {
+      this.clearPhoto();   // each recipe starts without a picked photo
       this.recipe = {
         name: r.name || '', description: r.description || '', servings: r.servings,
         yield: r.yield || '', image_url: r.image_url || '', tags: r.tags || [],
@@ -136,7 +148,7 @@ function mixer() {
         const body = {
           name: (this.recipe.name || '').trim(), description: this.recipe.description || '',
           servings: numOrNull(this.recipe.servings), yield: this.recipe.yield || '',
-          image_url: this.recipe.image_url || null,
+          image_url: this.photoFile ? null : (this.recipe.image_url || null),  // picked file wins
           ingredients: this.recipe.ingredients.filter(i => blank(i.food) || blank(i.note))
             .map(i => ({ quantity: parseQty(i.quantity), unit: blank(i.unit), food: blank(i.food), note: blank(i.note) })),
           instructions: this.instructionsText.split('\n').map(s => s.trim()).filter(Boolean), tags: [],
@@ -145,6 +157,13 @@ function mixer() {
         const r = await fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' });
         if (!r.ok) throw new Error(await detail(r));
         const out = await r.json(); this.lastName = body.name; this.lastUrl = out.url;
+        if (this.photoFile) {
+          try {
+            const fd = new FormData(); fd.append('file', this.photoFile);
+            const ir = await fetch('/api/recipe-image/' + out.slug, { method: 'PUT', body: fd, credentials: 'same-origin' });
+            if (!ir.ok) this.showToast('Recipe saved — but the photo upload failed');
+          } catch (_) { this.showToast('Recipe saved — but the photo upload failed'); }
+        }
         if (this.queue.length) { this.showToast('Pushed — next recipe loaded (' + this.queue.length + ' left)'); this.loadRecipe(this.queue.shift()); }
         else { this.view = 'done'; }
       } catch (e) { this.error = String(e.message || e); }
@@ -156,6 +175,7 @@ function mixer() {
     },
     reset() {
       this.fileList = null; this.url = ''; this.prompt = ''; this.error = '';
+      this.clearPhoto();
       this.recipe = emptyRecipe(); this.instructionsText = ''; this.queue = []; this.view = 'input';
     },
     showToast(m) { this.toast = m; clearTimeout(this._t); this._t = setTimeout(() => this.toast = '', 2600); },

@@ -117,6 +117,22 @@ def test_mealie(url: str, token: str) -> tuple[bool, str]:
     return False, f"Mealie returned HTTP {r.status_code}."
 
 
+def upload_recipe_image(slug: str, content: bytes, filename: str = "photo.jpg") -> None:
+    """Upload an image file as a recipe's photo. Mealie resizes + thumbnails it.
+    PUT /api/recipes/{slug}/image — multipart: `image` file + `extension` field."""
+    url, token = _mealie()
+    ext = filename.rsplit(".", 1)[-1].lower() if filename and "." in filename else "jpg"
+    ext = ext or "jpg"
+    r = httpx.put(
+        f"{url}/api/recipes/{slug}/image",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"image": (filename or f"photo.{ext}", content)},
+        data={"extension": ext},
+        timeout=30,
+    )
+    r.raise_for_status()
+
+
 def _resolve(client: httpx.Client, endpoint: str, kind: str, name: str, cache: dict[str, dict]) -> dict:
     """Return the food/unit object for `name`, creating it in Mealie if absent.
 

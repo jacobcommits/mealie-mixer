@@ -36,6 +36,14 @@ def test_set_config_via_api(monkeypatch, tmp_path):
     assert config.get("MEALIE_URL") == "http://m:9925"
 
 
+def test_recipe_image_requires_auth(monkeypatch, tmp_path):
+    _isolate(monkeypatch, tmp_path)  # no session, no MIXER_API_KEY → fail-closed
+    r = TestClient(app.fastapi_app).put(
+        "/api/recipe-image/x", files={"file": ("a.jpg", b"x", "image/jpeg")}
+    )
+    assert r.status_code in (401, 503)
+
+
 def test_config_reports_env_pinned(monkeypatch, tmp_path):
     _isolate(monkeypatch, tmp_path, {"MEALIE_URL": "http://m", "MEALIE_TOKEN": "t", "AI_API_KEY": "k"})
     monkeypatch.setenv("MIXER_API_KEY", "from-env")   # pinned by env → overrides Settings

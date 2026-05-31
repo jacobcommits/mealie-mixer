@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 import config
 import core
 from extract import extract_recipes, extract_recipes_from_url, test_ai
-from push import fetch_food_names, push_recipe, test_mealie
+from push import fetch_food_names, push_recipe, test_mealie, upload_recipe_image
 
 
 # ── Pydantic models ────────────────────────────────────────────────────
@@ -335,3 +335,14 @@ def api_generate_key():
 def api_foods():
     """Food names for the UI autocomplete (session or key auth)."""
     return {"foods": fetch_food_names()}
+
+
+@router.put("/recipe-image/{slug}", dependencies=[Depends(require_access)])
+async def api_recipe_image(slug: str, file: UploadFile = File(...)):
+    """Attach an uploaded photo to a recipe (Mealie resizes/thumbnails it).
+    Called after /api/push, with the slug it returned."""
+    try:
+        upload_recipe_image(slug, await file.read(), file.filename or "photo.jpg")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Image upload failed: {str(e)[:200]}")
+    return {"ok": True}

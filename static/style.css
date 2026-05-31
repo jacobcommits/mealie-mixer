@@ -46,6 +46,15 @@ textarea.input{resize:vertical;line-height:1.5}
 .filezone input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .or{text-align:center;color:var(--muted);font-size:.8rem}
 
+/* dish-photo picker in review */
+.photorow{display:flex;gap:8px;align-items:stretch}
+.photopick{position:relative;flex:1;display:flex;align-items:center;justify-content:center;
+  text-align:center;padding:12px;border:1px dashed var(--border);border-radius:10px;
+  color:var(--muted);cursor:pointer;background:var(--surface2);font-size:.9rem}
+.photopick input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.photorow .x{background:transparent;border:1px solid var(--border);border-radius:10px;
+  color:var(--muted);font-size:1rem;cursor:pointer;padding:0 14px}
+
 /* buttons */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
   border:1px solid var(--border);background:var(--surface2);color:var(--text);

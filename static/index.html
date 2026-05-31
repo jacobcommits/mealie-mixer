@@ -112,7 +112,14 @@
     <template x-if="view === 'review'">
       <div class="card">
         <p class="muted small" x-show="queue.length" x-text="queue.length + ' more queued'"></p>
-        <img class="hero" x-show="recipe.image_url" :src="recipe.image_url" alt="" />
+        <img class="hero" x-show="photoPreview || recipe.image_url" :src="photoPreview || recipe.image_url" alt="" />
+        <div class="photorow">
+          <label class="photopick">
+            <input type="file" accept="image/*" capture="environment" @change="pickPhoto($event)" />
+            <span x-text="photoFile ? '📷 Photo selected — tap to change' : '📷 Add a dish photo (optional)'"></span>
+          </label>
+          <button class="x" x-show="photoFile" @click="clearPhoto()" title="remove photo">✕</button>
+        </div>
         <input class="input title" placeholder="Recipe name" x-model="recipe.name" />
         <textarea class="input" rows="2" placeholder="Description" x-model="recipe.description"></textarea>
         <div class="row">
