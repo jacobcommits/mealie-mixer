@@ -33,6 +33,12 @@ def test_categories_503_without_session_or_key(monkeypatch, tmp_path):
     assert TestClient(app.fastapi_app).get("/api/categories").status_code == 503
 
 
+def test_recipe_names_503_without_session_or_key(monkeypatch, tmp_path):
+    _isolate(monkeypatch, tmp_path)
+    # no session, no MIXER_API_KEY → fail-closed (mirrors /api/foods)
+    assert TestClient(app.fastapi_app).get("/api/recipe-names").status_code == 503
+
+
 def test_set_config_via_api(monkeypatch, tmp_path):
     _isolate(monkeypatch, tmp_path)
     c = TestClient(app.fastapi_app)

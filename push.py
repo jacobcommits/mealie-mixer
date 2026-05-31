@@ -108,6 +108,21 @@ def fetch_category_names() -> list[str]:
         return sorted({it["name"] for it in r.json().get("items", []) if it.get("name")})
 
 
+def fetch_recipe_names() -> list[str]:
+    """All existing Mealie recipe names, sorted. Feeds the review-step
+    duplicate-name warning so the reviewer notices a name already in Mealie
+    (which would otherwise create a 'recipe-2'). Returns [] if Mealie is unset."""
+    url, token = _mealie()
+    if not (url and token):
+        return []
+    with httpx.Client(
+        base_url=url, headers={"Authorization": f"Bearer {token}"}, timeout=30
+    ) as client:
+        r = client.get("/api/recipes", params={"perPage": -1})
+        r.raise_for_status()
+        return sorted({it["name"] for it in r.json().get("items", []) if it.get("name")})
+
+
 def test_mealie(url: str, token: str) -> tuple[bool, str]:
     """Check a Mealie URL + token by hitting /api/users/self. Returns
     (ok, message). Used by the setup/settings page's Test button."""
@@ -212,6 +227,8 @@ def push_recipe(recipe: dict, client: httpx.Client | None = None, structured: bo
             timeout=30,
         )
 
+    slug = None       # set once the shell is created; used to roll back on failure
+    finished = False  # flips true only after every step succeeds
     try:
         # 1. Create the shell with just the name.
         #    LANDMINE: the response body is the slug as a bare JSON string
@@ -302,6 +319,12 @@ def push_recipe(recipe: dict, client: httpx.Client | None = None, structured: bo
             r = client.patch(f"/api/recipes/{slug}", json={"recipeCategory": cat_objs})
             r.raise_for_status()
 
+        # 6. Source URL (link imports) — its own PATCH. Mealie's field is orgURL;
+        #    records where the recipe came from so it links back.
+        if recipe.get("source_url"):
+            r = client.patch(f"/api/recipes/{slug}", json={"orgURL": recipe["source_url"]})
+            r.raise_for_status()
+
         # Tags intentionally skipped — see CLAUDE.md landmine.
 
         # Dish photo (URL imports only): Mealie downloads it from the URL.
@@ -314,8 +337,21 @@ def push_recipe(recipe: dict, client: httpx.Client | None = None, structured: bo
             except httpx.HTTPError as e:
                 print(f"  ! couldn't attach photo (recipe still saved): {e}", file=sys.stderr)
 
+        finished = True
         print(f"  done -> {mealie_url}/g/home/r/{slug}", file=sys.stderr)
         return slug
+    except Exception:
+        # A failure mid-push leaves a half-created recipe (shell + some fields).
+        # Roll it back so a failed push leaves nothing behind. The dish-photo
+        # attach above is non-fatal (its own try), so a fully-built recipe that
+        # only failed the photo never reaches here.
+        if slug and not finished:
+            print("  ! push failed — rolling back the partial recipe", file=sys.stderr)
+            try:
+                client.delete(f"/api/recipes/{slug}")
+            except Exception:
+                pass
+        raise
     finally:
         if owns_client:
             client.close()

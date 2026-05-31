@@ -27,7 +27,14 @@ from pydantic import BaseModel, Field
 import config
 import core
 from extract import extract_recipes, extract_recipes_from_url, test_ai
-from push import fetch_category_names, fetch_food_names, push_recipe, test_mealie, upload_recipe_image
+from push import (
+    fetch_category_names,
+    fetch_food_names,
+    fetch_recipe_names,
+    push_recipe,
+    test_mealie,
+    upload_recipe_image,
+)
 
 
 # ── Pydantic models ────────────────────────────────────────────────────
@@ -57,6 +64,7 @@ class Recipe(BaseModel):
     instructions: list[str] = []
     tags: list[str] = []
     categories: list[str] = []
+    source_url: str = ""
     image_url: str | None = None
 
 
@@ -351,6 +359,12 @@ def api_foods():
 def api_categories():
     """Category names for the review-step autocomplete (session or key auth)."""
     return {"categories": fetch_category_names()}
+
+
+@router.get("/recipe-names", dependencies=[Depends(require_access)])
+def api_recipe_names():
+    """Existing recipe names for the review-step duplicate warning."""
+    return {"names": fetch_recipe_names()}
 
 
 @router.put("/recipe-image/{slug}", dependencies=[Depends(require_access)])

@@ -110,7 +110,7 @@
 
     <!-- review / edit -->
     <template x-if="view === 'review'">
-      <div class="card">
+      <div class="card" @input.debounce.400ms="saveSession()">
         <p class="muted small" x-show="queue.length" x-text="queue.length + ' more queued'"></p>
         <img class="hero" x-show="photoPreview || recipe.image_url" :src="photoPreview || recipe.image_url" alt="" />
         <div class="photorow">
@@ -120,7 +120,18 @@
           </label>
           <button class="x" x-show="photoFile" @click="clearPhoto()" title="remove photo">✕</button>
         </div>
+        <template x-if="sourceImages.length">
+          <div class="sourcebox">
+            <p class="muted small">Source screenshot — tap to zoom &amp; compare</p>
+            <div class="sourcestrip">
+              <template x-for="(s, i) in sourceImages" :key="i">
+                <img class="sourcethumb" :src="s" @click="zoomSrc = s" alt="source" />
+              </template>
+            </div>
+          </div>
+        </template>
         <input class="input title" placeholder="Recipe name" x-model="recipe.name" />
+        <small class="warn" x-show="nameExists()">⚠ A recipe with this name already exists in Mealie — pushing makes a separate copy.</small>
         <textarea class="input" rows="2" placeholder="Description" x-model="recipe.description"></textarea>
         <div class="row">
           <label class="field"><span>Servings</span>
@@ -139,12 +150,17 @@
         <h3>Ingredients</h3>
         <div class="ings">
           <template x-for="(ing, i) in recipe.ingredients" :key="i">
-            <div class="ing">
-              <input class="input qty" placeholder="qty" x-model="ing.quantity" />
-              <input class="input unit" placeholder="unit" x-model="ing.unit" />
-              <input class="input food" placeholder="food" list="foods-list" x-model="ing.food" />
-              <input class="input note" placeholder="note" x-model="ing.note" />
-              <button class="x" @click="recipe.ingredients.splice(i,1)" title="remove">✕</button>
+            <div class="ingwrap">
+              <div class="ing">
+                <input class="input qty" placeholder="qty" x-model="ing.quantity" />
+                <input class="input unit" placeholder="unit" x-model="ing.unit" />
+                <input class="input food" placeholder="food" list="foods-list" x-model="ing.food" />
+                <input class="input note" placeholder="note" x-model="ing.note" />
+                <button class="x" @click="recipe.ingredients.splice(i,1)" title="remove">✕</button>
+              </div>
+              <button class="foodhint" type="button" x-show="nearestFood(ing.food)"
+                      @click="ing.food = nearestFood(ing.food)"
+                      x-text="'↳ use ' + nearestFood(ing.food) + ' instead?'"></button>
             </div>
           </template>
         </div>
@@ -175,6 +191,21 @@
     <div class="spinner big"></div><p x-text="loadingMsg"></p>
   </div>
   <div class="toast" x-show="toast" x-text="toast" x-transition></div>
+
+  <div class="zoom" x-show="zoomSrc" @click="zoomSrc = ''" x-transition.opacity x-cloak>
+    <img :src="zoomSrc" alt="" />
+  </div>
+
+  <div class="modal" x-show="dupModal" @click.self="cancelDup()" x-transition.opacity x-cloak>
+    <div class="modalbox">
+      <h2>⚠ Already in Mealie</h2>
+      <p>A recipe named “<strong x-text="recipe.name"></strong>” already exists. Pushing will create a <em>separate copy</em> (Mealie won't overwrite the original).</p>
+      <div class="row">
+        <button class="btn ghost" @click="cancelDup()">Cancel</button>
+        <button class="btn primary" @click="confirmDup()">Push anyway</button>
+      </div>
+    </div>
+  </div>
 
   <datalist id="foods-list">
     <template x-for="f in foods" :key="f"><option :value="f"></option></template>

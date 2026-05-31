@@ -95,6 +95,33 @@ small{font-size:.8rem;line-height:1.4}
   font-size:.8rem;line-height:1;padding:2px}
 .chip .cx:active{color:var(--danger)}
 
+/* source screenshot strip (review) */
+.sourcebox{display:flex;flex-direction:column;gap:6px}
+.sourcestrip{display:flex;gap:8px;flex-wrap:wrap}
+.sourcethumb{height:88px;width:auto;max-width:120px;object-fit:cover;border-radius:10px;
+  border:1px solid var(--border);cursor:zoom-in}
+.sourcethumb:active{transform:scale(.97)}
+/* full-screen image zoom */
+.zoom{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+  padding:16px;background:rgba(0,0,0,.9);cursor:zoom-out}
+.zoom img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px}
+
+/* confirm modal (duplicate-name push) */
+.modal{position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;
+  padding:20px;background:rgba(0,0,0,.7);backdrop-filter:blur(3px)}
+.modalbox{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:20px;max-width:380px;width:100%;display:flex;flex-direction:column;gap:14px;
+  box-shadow:0 10px 40px rgba(0,0,0,.5)}
+.modalbox h2{font-size:1.15rem}
+.modalbox p{color:var(--muted);font-size:.92rem;line-height:1.5}
+.modalbox .row{margin-top:4px}
+
+/* per-ingredient "did you mean" food hint */
+.ingwrap{display:flex;flex-direction:column;gap:3px}
+.foodhint{align-self:flex-start;background:none;border:none;color:var(--accent2);
+  font-size:.78rem;cursor:pointer;padding:0 2px 2px;text-align:left}
+.foodhint:active{opacity:.6}
+
 /* sticky action bar */
 .actionbar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:10px;
   padding:12px 16px calc(12px + env(safe-area-inset-bottom));

@@ -150,10 +150,11 @@ def extract_recipes_from_url(
     prompt = build_user_prompt(target_language, user_note, source="the recipe text below", known_categories=known_categories)
     content = [{"type": "text", "text": f"{prompt}\n\n--- RECIPE SOURCE ---\n{source_text}"}]
     recipes = _structure(content)
-    # carry the page's dish photo through so push.py can attach it in Mealie
+    # carry the page's dish photo + source link through so push.py can attach them
     for r in recipes:
         if image_url:
             r["image_url"] = image_url
+        r["source_url"] = url
     return recipes
 
 
