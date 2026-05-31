@@ -183,6 +183,11 @@ function mixer() {
       if (this.foods.some(f => f.toLowerCase() === raw.toLowerCase())) return 'exists';
       return this.nearestFood(raw) ? 'near' : 'new';
     },
+    socialUrl() {
+      // social posts aren't scrapeable (auth-walled, recipe is in the caption) —
+      // the user should screenshot the post and share the image instead
+      return /(?:instagram\.com|tiktok\.com|fb\.watch|facebook\.com)/i.test(this.url || '');
+    },
     clearSourceImages() { this.sourceImages.forEach(u => { try { URL.revokeObjectURL(u); } catch (_) {} }); this.sourceImages = []; },
     saveSession() {
       try { localStorage.setItem('mm-session', JSON.stringify({ recipe: this.recipe, instructionsText: this.instructionsText, queue: this.queue })); } catch (_) {}
