@@ -196,9 +196,84 @@ def _scrape_url(url: str) -> tuple[str, str]:
     if not text:
         raise ValueError(
             "Couldn't find a recipe at that link — no structured recipe data on the page. "
-            "(Social posts like Instagram/TikTok won't work; screenshot those instead.)"
+            "(For social posts use the video path; if the recipe is only in the video, screenshot it.)"
         )
     return text, image_url
+
+
+# ── Social / video import (yt-dlp) — Phase 1: caption only ──────────────
+VIDEO_HOSTS = (
+    "instagram.com", "tiktok.com", "youtube.com", "youtu.be",
+    "facebook.com", "fb.watch",
+)
+
+
+def is_video_url(url: str) -> bool:
+    """True if the URL is a social/video host we route through yt-dlp instead of
+    the schema.org recipe scraper."""
+    u = (url or "").lower()
+    return any(host in u for host in VIDEO_HOSTS)
+
+
+def _video_metadata(url: str) -> dict:
+    """A social post's caption/description + thumbnail via yt-dlp — metadata only,
+    no video download, no ffmpeg."""
+    import yt_dlp  # lazy: only needed on the video path
+
+    opts = {"quiet": True, "skip_download": True, "noplaylist": True, "no_warnings": True}
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    return {
+        "title": info.get("title") or "",
+        "description": info.get("description") or "",
+        "thumbnail": info.get("thumbnail") or "",
+    }
+
+
+def extract_recipes_from_video(
+    url: str,
+    user_note: str = "",
+    target_language: str = "English",
+    known_categories=(),
+) -> list[dict]:
+    """Extract a recipe from a social VIDEO post (TikTok / Reel / Short / FB).
+
+    Phase 1: read the post's CAPTION (+ title) via yt-dlp and structure it with
+    the SAME LLM call as every other path. Works when the creator wrote the recipe
+    in the caption; if it's only spoken/shown in the video the caption is empty and
+    we raise a clear 'screenshot it instead' error. The post thumbnail becomes the
+    dish photo; the link is saved as the source.
+    """
+    try:
+        meta = _video_metadata(url)
+    except Exception as e:
+        raise ValueError(
+            "Couldn't read that social link — it may be private/login-walled or "
+            f"unsupported. Screenshot the post and share the image instead. ({str(e)[:150]})"
+        )
+
+    title, caption = meta["title"], meta["description"]
+    if not caption.strip():
+        raise ValueError(
+            "No recipe text in this post's caption (it may only be in the video). "
+            "Screenshot the post and share the image instead."
+        )
+
+    parts = [f"Title: {title}"] if title else []
+    parts.append(f"Caption:\n{caption}")
+    source_text = "\n\n".join(parts)
+
+    prompt = build_user_prompt(
+        target_language, user_note,
+        source="the social-media post text below", known_categories=known_categories,
+    )
+    content = [{"type": "text", "text": f"{prompt}\n\n--- POST TEXT ---\n{source_text}"}]
+    recipes = _structure(content)
+    for r in recipes:
+        if meta["thumbnail"]:
+            r["image_url"] = meta["thumbnail"]
+        r["source_url"] = url
+    return recipes
 
 
 def test_ai(base_url: str, model: str, api_key: str) -> tuple[bool, str]:
@@ -285,7 +360,10 @@ if __name__ == "__main__":
         ap.error("provide image file(s) or --url")
     try:
         if args.url:
-            recipes = extract_recipes_from_url(args.url, user_note=args.prompt, target_language=args.lang)
+            if is_video_url(args.url):
+                recipes = extract_recipes_from_video(args.url, user_note=args.prompt, target_language=args.lang)
+            else:
+                recipes = extract_recipes_from_url(args.url, user_note=args.prompt, target_language=args.lang)
         else:
             recipes = extract_recipes(args.images, user_note=args.prompt, target_language=args.lang)
     except RuntimeError as e:

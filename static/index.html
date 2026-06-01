@@ -96,7 +96,7 @@
         </label>
         <div class="or">— or —</div>
         <input class="input" type="url" placeholder="paste a recipe link" x-model="url" />
-        <small class="warn" x-show="socialUrl()">⚠ Instagram/TikTok links can't be read — screenshot the post and share the image instead.</small>
+        <small class="muted small" x-show="socialUrl()">ℹ We'll read the post's caption. If the recipe is only spoken/shown in the video (not written in the caption), screenshot the post and share the image instead.</small>
         <div class="row">
           <select class="input" x-model="language">
             <template x-for="l in languages" :key="l"><option x-text="l"></option></template>

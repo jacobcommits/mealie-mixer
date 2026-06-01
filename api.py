@@ -26,7 +26,13 @@ from pydantic import BaseModel, Field
 
 import config
 import core
-from extract import extract_recipes, extract_recipes_from_url, test_ai
+from extract import (
+    extract_recipes,
+    extract_recipes_from_url,
+    extract_recipes_from_video,
+    is_video_url,
+    test_ai,
+)
 from push import (
     fetch_category_names,
     fetch_food_names,
@@ -200,10 +206,17 @@ async def api_extract(
     tmp_paths: list[str] = []
     try:
         if url and url.strip():
-            recipes = extract_recipes_from_url(
-                url.strip(), user_note=prompt, target_language=language,
-                known_categories=known_categories,
-            )
+            u = url.strip()
+            if is_video_url(u):
+                recipes = extract_recipes_from_video(
+                    u, user_note=prompt, target_language=language,
+                    known_categories=known_categories,
+                )
+            else:
+                recipes = extract_recipes_from_url(
+                    u, user_note=prompt, target_language=language,
+                    known_categories=known_categories,
+                )
         elif files:
             for f in files:
                 suffix = os.path.splitext(f.filename or "img.jpg")[1] or ".jpg"
