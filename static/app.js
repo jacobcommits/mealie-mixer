@@ -144,6 +144,11 @@ function mixer() {
       if (this.photoPreview) URL.revokeObjectURL(this.photoPreview);
       this.photoFile = null; this.photoPreview = '';
     },
+    removePhoto() { this.clearPhoto(); this.recipe.image_url = ''; },   // clears a picked file AND an auto thumbnail → no photo
+    autoPhotoWarn() {  // an auto-grabbed thumbnail from a social post (often not the dish)
+      return !this.photoFile && !!this.recipe.image_url &&
+        /(instagram|tiktok|youtube|youtu\.be|facebook|fb\.watch)/i.test(this.recipe.source_url || '');
+    },
 
     loadRecipe(r) {
       this.clearPhoto();   // each recipe starts without a picked photo

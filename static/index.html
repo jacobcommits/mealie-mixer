@@ -119,10 +119,11 @@
         <div class="photorow">
           <label class="photopick">
             <input type="file" accept="image/*" @change="pickPhoto($event)" />
-            <span x-text="photoFile ? '📷 Photo selected — tap to change' : '📷 Add a dish photo (optional)'"></span>
+            <span x-text="(photoFile || recipe.image_url) ? '📷 Tap to change the photo' : '📷 Add a dish photo (optional)'"></span>
           </label>
-          <button class="x" x-show="photoFile" @click="clearPhoto()" title="remove photo">✕</button>
+          <button class="x" x-show="photoFile || recipe.image_url" @click="removePhoto()" title="remove photo">✕</button>
         </div>
+        <small class="warn" x-show="autoPhotoWarn()">⚠ Auto-grabbed from the post — check it's the dish, or remove it.</small>
         <template x-if="sourceImages.length">
           <div class="sourcebox">
             <p class="muted small">Source screenshot — tap to zoom &amp; compare</p>
