@@ -75,6 +75,7 @@ Rules:
 - Keep naturally COUNTABLE whole items as a count, never a weight — eggs, onions, lemons, peppers, bananas, potatoes, etc.: quantity = the number, unit = null, food = the item, with any size/prep in note ("2 large onions, diced" → quantity 2, unit null, food "onion", note "large, diced"). Do NOT convert a whole countable item to grams.
 - If a countable item has a natural counting word, use it as the unit and keep food clean: "2 cloves garlic" → quantity 2, unit "clove", food "garlic"; likewise slices, cans, sprigs, heads, sticks, rashers.
 - Put the ingredient name in "food" and descriptors in "note", so "food" stays clean and reusable.
+- Strip brand / sponsor / trademark names out of "food" and move them to "note", keeping "food" generic: "1 package Philadelphia cream cheese" → food "cream cheese", note "Philadelphia, 1 package"; "Hellmann's mayonnaise" → food "mayonnaise", note "Hellmann's". If the brand IS the common name with no real generic, keep it as the food.
 - Keep "food" to a SINGLE ingredient. If the source offers alternatives ("X or Y"), put X in "food" and "or Y" in "note".
 - NEVER merge two different foods into one ingredient (e.g. "salt and pepper", "oil or lard" is fine as alternatives but "salt and pepper" is two foods). Emit a separate ingredient for each, even if they share an amount or are both "to taste".
 - If there is no clear amount (e.g. "salt to taste"), set quantity to null and put the descriptor in "note".
@@ -131,6 +132,23 @@ def extract_recipes(
     content = [{"type": "text", "text": build_user_prompt(target_language, user_note, known_categories=known_categories)}]
     for p in image_paths:
         content.append({"type": "image_url", "image_url": {"url": image_to_data_url(p)}})
+    return _structure(content)
+
+
+def extract_recipes_from_text(
+    text: str,
+    user_note: str = "",
+    target_language: str = "English",
+    known_categories=(),
+) -> list[dict]:
+    """Extract recipe(s) from pasted raw text — no image, no scrape. The text goes
+    straight to the same structuring call. Handy as a manual fallback: paste an
+    Instagram caption yourself when yt-dlp hits a login wall."""
+    prompt = build_user_prompt(
+        target_language, user_note,
+        source="the recipe text below", known_categories=known_categories,
+    )
+    content = [{"type": "text", "text": f"{prompt}\n\n--- RECIPE TEXT ---\n{text}"}]
     return _structure(content)
 
 
@@ -353,19 +371,22 @@ def parse_recipes(raw: str) -> list[dict]:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Extract structured recipes from images or a URL.")
     ap.add_argument("images", nargs="*", help="one or more image files (same recipe or several)")
-    ap.add_argument("--url", default="", help="extract from a recipe-website URL instead of images")
+    ap.add_argument("--url", default="", help="extract from a recipe-website or social/video URL instead of images")
+    ap.add_argument("--text", default="", help="extract from pasted recipe text instead of an image/URL")
     ap.add_argument("--prompt", default="", help='extra instructions, e.g. "no mushrooms"')
     ap.add_argument("--lang", default="English", help="output language (default: English)")
     args = ap.parse_args()
 
-    if not args.url and not args.images:
-        ap.error("provide image file(s) or --url")
+    if not args.url and not args.images and not args.text:
+        ap.error("provide image file(s), --url, or --text")
     try:
         if args.url:
             if is_video_url(args.url):
                 recipes = extract_recipes_from_video(args.url, user_note=args.prompt, target_language=args.lang)
             else:
                 recipes = extract_recipes_from_url(args.url, user_note=args.prompt, target_language=args.lang)
+        elif args.text:
+            recipes = extract_recipes_from_text(args.text, user_note=args.prompt, target_language=args.lang)
         else:
             recipes = extract_recipes(args.images, user_note=args.prompt, target_language=args.lang)
     except RuntimeError as e:

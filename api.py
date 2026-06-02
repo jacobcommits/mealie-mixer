@@ -28,6 +28,7 @@ import config
 import core
 from extract import (
     extract_recipes,
+    extract_recipes_from_text,
     extract_recipes_from_url,
     extract_recipes_from_video,
     is_video_url,
@@ -188,13 +189,15 @@ def health():
 async def api_extract(
     files: list[UploadFile] | None = File(None),
     url: str | None = Form(None),
+    text: str | None = Form(None),
     language: str = Form("English"),
     prompt: str = Form(""),
 ):
-    """Extract recipe(s) from uploaded image(s) or a recipe URL.
+    """Extract recipe(s) from uploaded image(s), a recipe/social URL, or raw text.
 
-    Accepts ``multipart/form-data`` with one or more image ``files``, or a
-    ``url`` field pointing at a recipe page.  Returns structured JSON.
+    Accepts ``multipart/form-data`` with one or more image ``files``, a ``url``
+    field (recipe page or social/video link), or a ``text`` field (pasted recipe
+    text). Precedence: url, then files, then text. Returns structured JSON.
     """
     # Feed the user's existing Mealie categories to the prompt so the AI reuses
     # them instead of spawning near-dupes. Fail-soft: empty if Mealie's unreachable.
@@ -228,10 +231,15 @@ async def api_extract(
                 tmp_paths, user_note=prompt, target_language=language,
                 known_categories=known_categories,
             )
+        elif text and text.strip():
+            recipes = extract_recipes_from_text(
+                text.strip(), user_note=prompt, target_language=language,
+                known_categories=known_categories,
+            )
         else:
             raise HTTPException(
                 status_code=400,
-                detail="Provide image file(s) or a 'url' field.",
+                detail="Provide image file(s), a 'url', or 'text'.",
             )
     except HTTPException:
         raise

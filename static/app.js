@@ -16,7 +16,7 @@ function mixer() {
     aiTest: { ok: false, msg: '' },
     genKeyMsg: '', cfgMsg: '',
     // recipe input
-    fileList: null, url: '', language: 'English', prompt: '',
+    fileList: null, url: '', pastedText: '', language: 'English', prompt: '',
     // review
     recipe: emptyRecipe(), instructionsText: '', queue: [],
     photoFile: null, photoPreview: '', categoryInput: '',
@@ -125,6 +125,7 @@ function mixer() {
         const fd = new FormData();
         if (this.fileList && this.fileList.length) { for (const f of this.fileList) fd.append('files', f); }
         else if (this.url.trim()) { fd.append('url', this.url.trim()); }
+        else if (this.pastedText.trim()) { fd.append('text', this.pastedText.trim()); }
         fd.append('language', this.language); fd.append('prompt', this.prompt || '');
         const r = await fetch('/api/extract', { method: 'POST', body: fd, credentials: 'same-origin' });
         if (!r.ok) throw new Error(await detail(r));
@@ -263,7 +264,7 @@ function mixer() {
       else { this.reset(); }
     },
     reset() {
-      this.fileList = null; this.url = ''; this.prompt = ''; this.error = '';
+      this.fileList = null; this.url = ''; this.pastedText = ''; this.prompt = ''; this.error = '';
       this.clearPhoto(); this.clearSourceImages(); this.zoomSrc = ''; this.dupModal = false; this.clearSession();
       this.recipe = emptyRecipe(); this.instructionsText = ''; this.queue = []; this.view = 'input';
     },

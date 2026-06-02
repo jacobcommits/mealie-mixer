@@ -97,13 +97,15 @@
         <div class="or">— or —</div>
         <input class="input" type="url" placeholder="paste a recipe link" x-model="url" />
         <small class="muted small" x-show="socialUrl()">ℹ We'll read the post's caption. If the recipe is only spoken/shown in the video (not written in the caption), screenshot the post and share the image instead.</small>
+        <div class="or">— or —</div>
+        <textarea class="input" rows="4" placeholder="…or paste recipe text" x-model="pastedText"></textarea>
         <div class="row">
           <select class="input" x-model="language">
             <template x-for="l in languages" :key="l"><option x-text="l"></option></template>
           </select>
           <input class="input" type="text" placeholder="extra note (optional)" x-model="prompt" />
         </div>
-        <button class="btn primary" :disabled="loading || (!fileList?.length && !url.trim())"
+        <button class="btn primary" :disabled="loading || (!fileList?.length && !url.trim() && !pastedText.trim())"
                 @click="extract()">Extract recipe</button>
         <p class="err" x-show="error" x-text="error"></p>
       </div>
