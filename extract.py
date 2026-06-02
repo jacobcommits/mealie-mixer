@@ -71,7 +71,9 @@ For each recipe, output:
 
 Rules:
 - Translate EVERYTHING (name, ingredients, steps, tags) into {target_language}.
-- Convert all measurements to metric (grams, millilitres). Keep tbsp/tsp/pinch as-is.
+- Convert amounts measured by weight or volume (flour, sugar, butter, liquids, meat, grains, ...) to metric (grams, millilitres). Keep tbsp/tsp/pinch as-is.
+- Keep naturally COUNTABLE whole items as a count, never a weight — eggs, onions, lemons, peppers, bananas, potatoes, etc.: quantity = the number, unit = null, food = the item, with any size/prep in note ("2 large onions, diced" → quantity 2, unit null, food "onion", note "large, diced"). Do NOT convert a whole countable item to grams.
+- If a countable item has a natural counting word, use it as the unit and keep food clean: "2 cloves garlic" → quantity 2, unit "clove", food "garlic"; likewise slices, cans, sprigs, heads, sticks, rashers.
 - Put the ingredient name in "food" and descriptors in "note", so "food" stays clean and reusable.
 - Keep "food" to a SINGLE ingredient. If the source offers alternatives ("X or Y"), put X in "food" and "or Y" in "note".
 - NEVER merge two different foods into one ingredient (e.g. "salt and pepper", "oil or lard" is fine as alternatives but "salt and pepper" is two foods). Emit a separate ingredient for each, even if they share an amount or are both "to taste".
@@ -80,7 +82,7 @@ Rules:
 - Do NOT invent anything not shown in the source.{cat_rule}{extra}
 
 Respond with ONLY a JSON object in exactly this shape — no markdown, no commentary:
-{{"recipes": [{{"name": "...", "description": "...", "servings": 4, "yield": "4 servings", "ingredients": [{{"quantity": 1.4, "unit": "kg", "food": "ground beef", "note": "80/20"}}], "instructions": ["..."], "tags": ["..."], "categories": ["Main Course"]}}]}}"""
+{{"recipes": [{{"name": "...", "description": "...", "servings": 4, "yield": "4 servings", "ingredients": [{{"quantity": 1.4, "unit": "kg", "food": "ground beef", "note": "80/20"}}, {{"quantity": 2, "unit": null, "food": "egg", "note": null}}, {{"quantity": 2, "unit": "clove", "food": "garlic", "note": null}}], "instructions": ["..."], "tags": ["..."], "categories": ["Main Course"]}}]}}"""
 
 
 # ── Image handling ─────────────────────────────────────────────────────
