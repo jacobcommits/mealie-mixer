@@ -3,11 +3,13 @@
 
 function mixer() {
   return {
-    view: 'gate',   // gate | login | setup | settings | input | review | done
+    view: 'gate',   // gate | login | setup | settings | input | review | done | history
     languages: ['English', 'Polish', 'German', 'French', 'Spanish', 'Italian', 'Ukrainian'],
     foods: [],
     categories: [],
     recipeNames: [],
+    history: [],
+    expandedId: null, payloads: {},   // history-row preview (lazy-loaded by id)
     // config / auth
     cfgInfo: {},
     cfg: emptyCfg(),
@@ -25,7 +27,7 @@ function mixer() {
     // done
     lastName: '', lastUrl: '',
     // ui
-    loading: false, loadingMsg: '', error: '', toast: '',
+    loading: false, loadingMsg: '', error: '', toast: '', menuOpen: false,
 
     // ── gate / auth ─────────────────────────────────────────────────────
     async init() {
@@ -41,6 +43,7 @@ function mixer() {
       try { this.foods = (await getJSON('/api/foods')).foods || []; } catch (_) { this.foods = []; }
       try { this.categories = (await getJSON('/api/categories')).categories || []; } catch (_) { this.categories = []; }
       try { this.recipeNames = (await getJSON('/api/recipe-names')).names || []; } catch (_) { this.recipeNames = []; }
+      try { this.history = (await getJSON('/api/history')).items || []; } catch (_) { this.history = []; }
       this.error = ''; this.view = 'input';
       this.restoreSession();
       await this.maybeReadShare();
@@ -69,11 +72,34 @@ function mixer() {
       };
     },
     async openSettings() {
+      this.menuOpen = false;
       try { this.cfgInfo = await getJSON('/api/config'); } catch (_) {}
       this.prefillCfg();
       this.mealieTest = { ok: false, msg: '' }; this.aiTest = { ok: false, msg: '' };
       this.genKeyMsg = ''; this.cfgMsg = ''; this.error = '';
       this.view = 'settings';
+    },
+    async openHistory() {
+      this.menuOpen = false; this.expandedId = null;
+      try { this.history = (await getJSON('/api/history')).items || []; } catch (_) {}
+      this.error = ''; this.view = 'history';
+    },
+    async toggleHist(h) {
+      if (this.expandedId === h.id) { this.expandedId = null; return; }
+      if (!this.payloads[h.id]) {
+        try { const row = await getJSON('/api/history/' + h.id); this.payloads = { ...this.payloads, [h.id]: row.payload || {} }; }
+        catch (_) { this.payloads = { ...this.payloads, [h.id]: {} }; }
+      }
+      this.expandedId = h.id;
+    },
+    ingLine(ing) {
+      const p = [];
+      if (ing.quantity !== '' && ing.quantity != null) p.push(ing.quantity);
+      if (ing.unit) p.push(ing.unit);
+      if (ing.food) p.push(ing.food);
+      let s = p.join(' ');
+      if (ing.note) s += (s ? ', ' : '') + ing.note;
+      return s || '(item)';
     },
     pinned(key) { return (this.cfgInfo.env_pinned || []).includes(key); },
     secretPh(which) {
@@ -192,6 +218,22 @@ function mixer() {
       if (this.foods.some(f => f.toLowerCase() === raw.toLowerCase())) return 'exists';
       return this.nearestFood(raw) ? 'near' : 'new';
     },
+    alreadyImported() {
+      // non-blocking dedupe: does the entered URL match something already imported?
+      const norm = s => (s || '').trim().replace(/\/+$/, '').toLowerCase();
+      const u = norm(this.url);
+      if (!u) return null;
+      // only a successful push counts as "already imported" — discards don't
+      return this.history.find(h => h.status !== 'discarded' && norm(h.source_url) === u) || null;
+    },
+    importedNote() {
+      const h = this.alreadyImported();
+      if (!h) return '';
+      const d = (h.created_at || '').slice(0, 10);
+      return '⚠ Already imported' + (d ? ' on ' + d : '') + (h.name ? ' → ' + h.name : '')
+        + '. Importing again makes a separate copy.';
+    },
+    histHost(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (_) { return u; } },
     socialUrl() {
       // social posts aren't scrapeable (auth-walled, recipe is in the caption) —
       // the user should screenshot the post and share the image instead
@@ -258,6 +300,8 @@ function mixer() {
         const r = await fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' });
         if (!r.ok) throw new Error(await detail(r));
         const out = await r.json(); this.lastName = body.name; this.lastUrl = out.url;
+        this.history.unshift({ name: body.name, slug: out.slug, source_url: body.source_url || '',
+          mealie_url: out.url, status: 'success', created_at: new Date().toISOString() });
         if (this.photoFile) {
           try {
             const fd = new FormData(); fd.append('file', this.photoFile);
@@ -270,9 +314,31 @@ function mixer() {
       } catch (e) { this.error = String(e.message || e); }
       finally { this.loading = false; }
     },
-    discard() {
+    async discard() {
+      await this.stashDiscard();   // keep a restorable copy in case it was a misclick
       if (this.queue.length) { this.showToast('Discarded — next recipe (' + this.queue.length + ' left)'); this.error = ''; this.loadRecipe(this.queue.shift()); }
       else { this.reset(); }
+    },
+    async stashDiscard() {
+      const r = this.recipe;
+      if (!r || (!(r.name || '').trim() && !(r.ingredients || []).length)) return;  // nothing worth keeping
+      const payload = {
+        name: r.name || '', description: r.description || '', servings: r.servings,
+        yield: r.yield || '', image_url: r.image_url || '', tags: [], categories: r.categories || [],
+        source_url: r.source_url || '', notes: r.notes || [], ingredients: r.ingredients || [],
+        instructions: this.instructionsText.split('\n').map(s => s.trim()).filter(Boolean),
+      };
+      try { await api('/api/history/discard', { method: 'POST', body: JSON.stringify(payload) }); } catch (_) {}
+    },
+    async restoreImport(h) {
+      this.error = ''; this.loadingMsg = 'Restoring…'; this.loading = true;
+      try {
+        const row = await getJSON('/api/history/' + h.id);
+        if (!row.payload) throw new Error('Nothing to restore for this entry.');
+        this.queue = []; this.loadRecipe(row.payload); this.view = 'review';
+        this.showToast('Restored — review and push when ready');
+      } catch (e) { this.error = String(e.message || e); this.showToast('Could not restore'); }
+      finally { this.loading = false; }
     },
     reset() {
       this.fileList = null; this.url = ''; this.pastedText = ''; this.prompt = ''; this.error = '';

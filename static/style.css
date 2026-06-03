@@ -19,6 +19,18 @@ body{min-height:100dvh;padding-bottom:90px}
 .iconbtn{background:none;border:none;color:var(--muted);font-size:1.3rem;cursor:pointer;line-height:1}
 .iconbtn:active{transform:scale(.92)}
 
+/* hamburger side menu */
+.drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(80vw,300px);z-index:50;
+  background:var(--surface);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;gap:4px;padding:14px;
+  transform:translateX(100%);transition:transform .22s ease}
+.drawer.open{transform:translateX(0)}
+.drawer-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.drawer-item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;cursor:pointer;
+  background:transparent;border:none;color:var(--text);font-size:1rem;padding:14px 10px;border-radius:10px}
+.drawer-item:active{background:var(--surface2)}
+
 .wrap{max-width:680px;margin:0 auto;padding:16px}
 .card{background:var(--surface);border:1px solid var(--border);
   border-radius:var(--radius);padding:18px;display:flex;flex-direction:column;gap:12px}
@@ -73,6 +85,27 @@ small{font-size:.8rem;line-height:1.4}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;color:var(--accent2);font-size:.78rem}
 
 /* ingredients */
+.histlist{display:flex;flex-direction:column}
+.histlist:empty{display:none}
+.histitem{border-bottom:1px solid var(--border)}
+.histrow{display:flex;align-items:baseline;gap:8px;padding:9px 2px}
+.histtoggle{background:transparent;border:none;color:var(--muted);cursor:pointer;
+  font-size:.8rem;line-height:1;padding:0 2px;flex:none}
+.histname{flex:1;min-width:0;color:var(--text);text-decoration:none;font-weight:500;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.histname:active{color:var(--accent)}
+.histpreview{padding:2px 4px 12px 24px;display:flex;flex-direction:column;gap:6px}
+.prevings{list-style:disc;margin:0;padding-left:18px;display:flex;flex-direction:column;
+  gap:2px;font-size:.85rem;color:var(--text)}
+.prevings li{margin:0}
+.histmeta{display:flex;gap:8px;align-items:baseline;flex:none;color:var(--muted);font-size:.78rem}
+.histsrc{color:var(--muted);opacity:.8}
+.histname.histdiscarded{color:var(--muted);text-decoration:line-through;cursor:default}
+.histbadge{font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;color:var(--danger);
+  border:1px solid var(--danger);border-radius:6px;padding:1px 5px;opacity:.85}
+.histrestore{background:transparent;border:1px solid var(--border);color:var(--accent2);
+  border-radius:8px;padding:3px 8px;font-size:.76rem;cursor:pointer}
+.histrestore:active{background:var(--surface2)}
 .notes{display:flex;flex-direction:column;gap:10px}
 .notes:empty{display:none}
 .notewrap{display:flex;flex-direction:column;gap:5px}

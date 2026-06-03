@@ -21,11 +21,12 @@ import os
 import tempfile
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, Header, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
 import config
 import core
+import history
 from extract import (
     extract_recipes,
     extract_recipes_from_text,
@@ -289,7 +290,20 @@ def api_push(recipe: Recipe):
         )
 
     mealie_url = config.get("MEALIE_URL").rstrip("/")
-    return PushResponse(slug=slug, url=f"{mealie_url}/g/home/r/{slug}")
+    url = f"{mealie_url}/g/home/r/{slug}"
+
+    # Record the import (B4). Best-effort — a logging failure must never fail a push
+    # that already landed. Covers UI + agents since both go through this endpoint.
+    try:
+        history.log_import(
+            name=recipe.name, slug=slug,
+            source_url=recipe.source_url, mealie_url=url,
+            payload=recipe_dict,   # store the pushed recipe so history can preview it
+        )
+    except Exception:
+        pass
+
+    return PushResponse(slug=slug, url=url)
 
 
 # ── Browser session + UI/config endpoints (Phase 6: powers the web UI) ──────
@@ -394,6 +408,37 @@ def api_categories():
 def api_recipe_names():
     """Existing recipe names for the review-step duplicate warning."""
     return {"names": fetch_recipe_names()}
+
+
+@router.get("/history", dependencies=[Depends(require_access)])
+def api_history():
+    """Recent import history (B4) — powers the history screen + dedupe warning.
+    Session or key auth, like the other UI data endpoints."""
+    return {"items": history.list_imports()}
+
+
+@router.post("/history/discard", dependencies=[Depends(require_access)])
+def api_history_discard(item: dict = Body(...)):
+    """Stash a discarded review recipe so a misclick can be restored. Stores the
+    recipe verbatim (free-form, not the strict Recipe model) for faithful restore."""
+    try:
+        history.log_import(
+            name=item.get("name") or "", slug="",
+            source_url=item.get("source_url") or "", mealie_url="",
+            status="discarded", payload=item,
+        )
+    except Exception:
+        pass  # best-effort, never block the discard
+    return {"ok": True}
+
+
+@router.get("/history/{item_id}", dependencies=[Depends(require_access)])
+def api_history_item(item_id: int):
+    """One history entry incl. its stored recipe payload — used to restore a discard."""
+    row = history.get_import(item_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="History entry not found.")
+    return row
 
 
 @router.put("/recipe-image/{slug}", dependencies=[Depends(require_access)])

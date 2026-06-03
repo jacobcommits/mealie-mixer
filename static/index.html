@@ -16,8 +16,8 @@
 
   <header class="topbar">
     <span class="brand">🍲&nbsp;Mealie&nbsp;Mixer</span>
-    <button class="iconbtn" x-show="['input','review','done'].includes(view)"
-            @click="openSettings()" title="Settings">⚙️</button>
+    <button class="iconbtn" x-show="['input','review','done','history','settings'].includes(view)"
+            @click="menuOpen = true" title="Menu">☰</button>
   </header>
 
   <main class="wrap">
@@ -96,6 +96,7 @@
         </label>
         <div class="or">— or —</div>
         <input class="input" type="url" placeholder="paste a recipe link" x-model="url" />
+        <small class="warn" x-show="importedNote()" x-text="importedNote()"></small>
         <small class="muted small" x-show="socialUrl()">ℹ We'll read the post's caption. If the recipe is only spoken/shown in the video (not written in the caption), screenshot the post and share the image instead.</small>
         <div class="or">— or —</div>
         <textarea class="input" rows="4" placeholder="…or paste recipe text" x-model="pastedText"></textarea>
@@ -205,12 +206,64 @@
         <button class="btn ghost" @click="reset()">Add another</button>
       </div>
     </template>
+
+    <!-- history -->
+    <template x-if="view === 'history'">
+      <div class="card">
+        <h2>Import history</h2>
+        <p class="muted small" x-show="!history.length">Nothing imported yet.</p>
+        <div class="histlist">
+          <template x-for="(h, i) in history" :key="i">
+            <div class="histitem">
+              <div class="histrow">
+                <button class="histtoggle" @click="toggleHist(h)" x-text="expandedId === h.id ? '▾' : '▸'"></button>
+                <a class="histname" :class="{ histdiscarded: h.status === 'discarded' }"
+                   :href="h.status === 'discarded' ? null : h.mealie_url"
+                   :target="h.status === 'discarded' ? null : '_blank'"
+                   x-text="h.name || '(untitled)'"></a>
+                <div class="histmeta">
+                  <span class="histbadge" x-show="h.status === 'discarded'">discarded</span>
+                  <span x-text="(h.created_at || '').slice(0,10)"></span>
+                  <span class="histsrc" x-show="h.source_url" x-text="histHost(h.source_url)"></span>
+                  <button class="histrestore" x-show="h.status === 'discarded'" @click="restoreImport(h)">↩ restore</button>
+                </div>
+              </div>
+              <div class="histpreview" x-show="expandedId === h.id" x-cloak>
+                <p class="muted small" x-show="(payloads[h.id]||{}).servings || (payloads[h.id]||{}).yield"
+                   x-text="'Serves ' + ((payloads[h.id]||{}).servings || '?') + ((payloads[h.id]||{}).yield ? ' · ' + payloads[h.id].yield : '')"></p>
+                <ul class="prevings">
+                  <template x-for="(ing, k) in ((payloads[h.id]||{}).ingredients || [])" :key="k">
+                    <li x-text="ingLine(ing)"></li>
+                  </template>
+                </ul>
+                <p class="muted small" x-show="((payloads[h.id]||{}).instructions || []).length"
+                   x-text="((payloads[h.id]||{}).instructions || []).length + ' step(s)'"></p>
+                <p class="muted small" x-show="payloads[h.id] && !((payloads[h.id]||{}).ingredients || []).length">No recipe details stored for this entry.</p>
+              </div>
+            </div>
+          </template>
+        </div>
+        <button class="btn ghost" @click="view = 'input'">← Back</button>
+      </div>
+    </template>
   </main>
 
   <footer class="actionbar" x-show="view === 'review'">
     <button class="btn ghost" @click="discard()" x-text="queue.length ? 'Discard this' : 'Discard'"></button>
     <button class="btn primary" :disabled="loading" @click="push()">✅ Approve &amp; push</button>
   </footer>
+
+  <!-- side menu (hamburger) -->
+  <div class="drawer-backdrop" x-show="menuOpen" @click="menuOpen = false" x-transition.opacity x-cloak></div>
+  <nav class="drawer" :class="{ open: menuOpen }" x-cloak>
+    <div class="drawer-head">
+      <span class="brand">🍲&nbsp;Menu</span>
+      <button class="iconbtn" @click="menuOpen = false" title="Close">✕</button>
+    </div>
+    <button class="drawer-item" @click="openHistory()">🕘 <span>Import history</span></button>
+    <button class="drawer-item" @click="openSettings()">⚙️ <span>Settings</span></button>
+    <button class="drawer-item" x-show="cfgInfo.login_required" @click="menuOpen = false; logout()">🚪 <span>Log out</span></button>
+  </nav>
 
   <div class="overlay" x-show="loading" x-transition.opacity x-cloak>
     <div class="spinner big"></div><p x-text="loadingMsg"></p>
