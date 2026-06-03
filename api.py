@@ -51,6 +51,7 @@ class Ingredient(BaseModel):
     unit: str | None = None
     food: str | None = None
     note: str | None = None
+    title: str | None = None   # section heading on the first ingredient of a group
 
 
 class Recipe(BaseModel):

@@ -155,6 +155,7 @@
         <div class="ings">
           <template x-for="(ing, i) in recipe.ingredients" :key="i">
             <div class="ingwrap">
+              <input class="input section" x-show="ing.title" placeholder="section heading" x-model="ing.title" />
               <div class="ing">
                 <input class="input qty" placeholder="qty" x-model="ing.quantity" />
                 <input class="input unit" placeholder="unit" x-model="ing.unit" />
@@ -164,9 +165,13 @@
                 <input class="input note" placeholder="note" x-model="ing.note" />
                 <button class="x" @click="recipe.ingredients.splice(i,1)" title="remove">✕</button>
               </div>
-              <button class="foodhint" type="button" x-show="nearestFood(ing.food)"
-                      @click="ing.food = nearestFood(ing.food)"
-                      x-text="'↳ use ' + nearestFood(ing.food) + ' instead?'"></button>
+              <div class="rowactions">
+                <button class="foodhint" type="button" x-show="nearestFood(ing.food)"
+                        @click="ing.food = nearestFood(ing.food)"
+                        x-text="'↳ use ' + nearestFood(ing.food) + ' instead?'"></button>
+                <button class="foodhint" type="button" x-show="!ing.title"
+                        @click="ing.title = 'Section'">§ section</button>
+              </div>
             </div>
           </template>
         </div>

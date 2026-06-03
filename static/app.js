@@ -156,13 +156,13 @@ function mixer() {
         name: r.name || '', description: r.description || '', servings: r.servings,
         yield: r.yield || '', image_url: r.image_url || '', tags: r.tags || [],
         categories: r.categories || [], source_url: r.source_url || '',
-        ingredients: (r.ingredients || []).map(i => ({ quantity: i.quantity ?? '', unit: i.unit ?? '', food: i.food ?? '', note: i.note ?? '' })),
+        ingredients: (r.ingredients || []).map(i => ({ quantity: i.quantity ?? '', unit: i.unit ?? '', food: i.food ?? '', note: i.note ?? '', title: i.title ?? '' })),
       };
       this.instructionsText = (r.instructions || []).join('\n');
       this.categoryInput = '';
       this.saveSession();
     },
-    addIngredient() { this.recipe.ingredients.push({ quantity: '', unit: '', food: '', note: '' }); },
+    addIngredient() { this.recipe.ingredients.push({ quantity: '', unit: '', food: '', note: '', title: '' }); },
     addCategory(name) {
       const v = (name == null ? this.categoryInput : name).trim();
       this.categoryInput = '';
@@ -244,7 +244,7 @@ function mixer() {
           servings: numOrNull(this.recipe.servings), yield: this.recipe.yield || '',
           image_url: this.photoFile ? null : (this.recipe.image_url || null),  // picked file wins
           ingredients: this.recipe.ingredients.filter(i => blank(i.food) || blank(i.note))
-            .map(i => ({ quantity: parseQty(i.quantity), unit: blank(i.unit), food: blank(i.food), note: blank(i.note) })),
+            .map(i => ({ quantity: parseQty(i.quantity), unit: blank(i.unit), food: blank(i.food), note: blank(i.note), title: blank(i.title) })),
           instructions: this.instructionsText.split('\n').map(s => s.trim()).filter(Boolean), tags: [],
           categories: this.recipe.categories || [], source_url: this.recipe.source_url || '',
         };

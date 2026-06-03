@@ -65,6 +65,7 @@ For each recipe, output:
     - unit: a string ("g", "ml", "tbsp", "pack", "clove", ...) or null
     - food: the ingredient name ONLY, kept clean (e.g. "ground beef")
     - note: anything extra ("finely chopped", "80/20", "to taste") or null
+    - title: a short SECTION HEADING for this ingredient's group ("For the sauce", "For the dough"), set ONLY on the FIRST ingredient of a new section; null for every other ingredient. Most recipes have no sections → leave it null everywhere.
 - instructions: a list of step strings, in order
 - tags: a short list of tags ("dinner", "vegetarian", ...), or []
 - categories: a short list of category names that classify the dish ("Main Course", "Dessert", "Soup", "Breakfast", ...), translated into {target_language}, or []
@@ -83,7 +84,7 @@ Rules:
 - Do NOT invent anything not shown in the source.{cat_rule}{extra}
 
 Respond with ONLY a JSON object in exactly this shape — no markdown, no commentary:
-{{"recipes": [{{"name": "...", "description": "...", "servings": 4, "yield": "4 servings", "ingredients": [{{"quantity": 1.4, "unit": "kg", "food": "ground beef", "note": "80/20"}}, {{"quantity": 2, "unit": null, "food": "egg", "note": null}}, {{"quantity": 2, "unit": "clove", "food": "garlic", "note": null}}], "instructions": ["..."], "tags": ["..."], "categories": ["Main Course"]}}]}}"""
+{{"recipes": [{{"name": "...", "description": "...", "servings": 4, "yield": "4 servings", "ingredients": [{{"quantity": 1.4, "unit": "kg", "food": "ground beef", "note": "80/20", "title": "For the sauce"}}, {{"quantity": 2, "unit": null, "food": "egg", "note": null, "title": null}}, {{"quantity": 2, "unit": "clove", "food": "garlic", "note": null, "title": null}}], "instructions": ["..."], "tags": ["..."], "categories": ["Main Course"]}}]}}"""
 
 
 # ── Image handling ─────────────────────────────────────────────────────
@@ -327,6 +328,9 @@ def _normalize(recipes: list[dict]) -> list[dict]:
         for ing in r.get("ingredients", []):
             if ing.get("quantity") == 0:
                 ing["quantity"] = 1
+            # section heading: clean string or None (most ingredients have none)
+            t = (ing.get("title") or "").strip()
+            ing["title"] = t or None
         # categories: coerce to a clean, de-duplicated list of non-empty strings
         cats = r.get("categories") or []
         if isinstance(cats, str):

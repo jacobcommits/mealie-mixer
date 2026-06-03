@@ -31,7 +31,7 @@ class TestIngredient:
     def test_round_trip(self):
         ing = Ingredient(quantity=1.5, unit="tbsp", food="butter", note="melted")
         d = ing.model_dump()
-        assert d == {"quantity": 1.5, "unit": "tbsp", "food": "butter", "note": "melted"}
+        assert d == {"quantity": 1.5, "unit": "tbsp", "food": "butter", "note": "melted", "title": None}
 
     def test_nulls(self):
         ing = Ingredient(food="salt", note="to taste")

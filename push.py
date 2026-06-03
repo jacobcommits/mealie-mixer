@@ -200,7 +200,7 @@ def build_structured_ingredients(client: httpx.Client, recipe: dict) -> list[dic
                 "unit": unit,
                 "food": food,
                 "note": ing.get("note") or "",
-                "title": None,
+                "title": ing.get("title") or None,   # section heading (Mealie renders it above the row)
                 "disableAmount": False,
             }
         )

@@ -118,6 +118,9 @@ small{font-size:.8rem;line-height:1.4}
 
 /* per-ingredient "did you mean" food hint */
 .ingwrap{display:flex;flex-direction:column;gap:3px}
+.ingwrap+.ingwrap{margin-top:2px}
+.section{font-weight:600;font-size:.9rem;border-style:dashed;background:var(--surface);margin-top:6px}
+.rowactions{display:flex;gap:14px;flex-wrap:wrap}
 .foodhint{align-self:flex-start;background:none;border:none;color:var(--accent2);
   font-size:.78rem;cursor:pointer;padding:0 2px 2px;text-align:left}
 .foodhint:active{opacity:.6}
