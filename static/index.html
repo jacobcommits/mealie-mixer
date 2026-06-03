@@ -179,6 +179,19 @@
         <p class="legend">🟢 in Mealie · 🟡 near-match · 🔵 new food</p>
         <h3>Instructions</h3>
         <textarea class="input" rows="7" placeholder="one step per line" x-model="instructionsText"></textarea>
+        <h3>Notes</h3>
+        <div class="notes">
+          <template x-for="(n, i) in recipe.notes" :key="i">
+            <div class="notewrap">
+              <div class="noterow">
+                <input class="input" placeholder="note title (optional)" x-model="n.title" />
+                <button class="x" @click="removeNote(i)" title="remove">✕</button>
+              </div>
+              <textarea class="input" rows="2" placeholder="tip — storage, substitutions, make-ahead…" x-model="n.text"></textarea>
+            </div>
+          </template>
+        </div>
+        <button class="btn ghost" @click="addNote()">+ add note</button>
         <p class="err" x-show="error" x-text="error"></p>
       </div>
     </template>

@@ -319,6 +319,19 @@ def push_recipe(recipe: dict, client: httpx.Client | None = None, structured: bo
             r = client.patch(f"/api/recipes/{slug}", json={"recipeCategory": cat_objs})
             r.raise_for_status()
 
+        # 5b. Notes (useful culinary tips from URL/text imports) — its own PATCH.
+        #     Mealie's recipe `notes` is a list of {title, text}; send text always,
+        #     default title to "". _normalize already cleaned these; this filter is
+        #     the last-line guard (drop anything without text).
+        notes = [
+            {"title": str(n.get("title") or "").strip(), "text": str(n.get("text") or "").strip()}
+            for n in (recipe.get("notes") or [])
+            if str(n.get("text") or "").strip()
+        ]
+        if notes:
+            r = client.patch(f"/api/recipes/{slug}", json={"notes": notes})
+            r.raise_for_status()
+
         # 6. Source URL (link imports) — its own PATCH. Mealie's field is orgURL;
         #    records where the recipe came from so it links back.
         if recipe.get("source_url"):

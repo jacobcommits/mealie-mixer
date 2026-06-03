@@ -73,6 +73,13 @@ small{font-size:.8rem;line-height:1.4}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;color:var(--accent2);font-size:.78rem}
 
 /* ingredients */
+.notes{display:flex;flex-direction:column;gap:10px}
+.notes:empty{display:none}
+.notewrap{display:flex;flex-direction:column;gap:5px}
+.noterow{display:flex;gap:6px;align-items:center}
+.noterow .input{flex:1}
+.noterow .x{background:transparent;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer}
+.noterow .x:active{color:var(--danger)}
 .ings{display:flex;flex-direction:column;gap:8px}
 .ing{display:grid;grid-template-columns:64px 70px 1fr 1fr 34px;gap:6px;align-items:center}
 .ing .input{padding:10px}

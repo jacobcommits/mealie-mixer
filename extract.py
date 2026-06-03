@@ -69,6 +69,7 @@ For each recipe, output:
 - instructions: a list of step strings, in order
 - tags: a short list of tags ("dinner", "vegetarian", ...), or []
 - categories: a short list of category names that classify the dish ("Main Course", "Dessert", "Soup", "Breakfast", ...), translated into {target_language}, or []
+- notes: a list of genuinely useful culinary tips found in the source — storage/freezing, make-ahead, substitutions, troubleshooting, serving suggestions — each as {{"title": <short label>, "text": <the tip>}}, translated into {target_language}. EXCLUDE the author's personal story, blog intro, SEO padding, ads, and anything already covered by the ingredients or steps. Most images/recipe cards have none → []
 
 Rules:
 - Translate EVERYTHING (name, ingredients, steps, tags) into {target_language}.
@@ -84,7 +85,7 @@ Rules:
 - Do NOT invent anything not shown in the source.{cat_rule}{extra}
 
 Respond with ONLY a JSON object in exactly this shape — no markdown, no commentary:
-{{"recipes": [{{"name": "...", "description": "...", "servings": 4, "yield": "4 servings", "ingredients": [{{"quantity": 1.4, "unit": "kg", "food": "ground beef", "note": "80/20", "title": "For the sauce"}}, {{"quantity": 2, "unit": null, "food": "egg", "note": null, "title": null}}, {{"quantity": 2, "unit": "clove", "food": "garlic", "note": null, "title": null}}], "instructions": ["..."], "tags": ["..."], "categories": ["Main Course"]}}]}}"""
+{{"recipes": [{{"name": "...", "description": "...", "servings": 4, "yield": "4 servings", "ingredients": [{{"quantity": 1.4, "unit": "kg", "food": "ground beef", "note": "80/20", "title": "For the sauce"}}, {{"quantity": 2, "unit": null, "food": "egg", "note": null, "title": null}}, {{"quantity": 2, "unit": "clove", "food": "garlic", "note": null, "title": null}}], "instructions": ["..."], "tags": ["..."], "categories": ["Main Course"], "notes": [{{"title": "Storage", "text": "Keeps 3 days in the fridge."}}]}}]}}"""
 
 
 # ── Image handling ─────────────────────────────────────────────────────
@@ -341,6 +342,21 @@ def _normalize(recipes: list[dict]) -> list[dict]:
             if c and c.lower() not in {x.lower() for x in clean}:
                 clean.append(c)
         r["categories"] = clean
+        # notes: a clean list of {title, text} dicts. Drop entries with no text
+        # (a bare title is useless), coerce both fields to stripped strings.
+        notes = r.get("notes") or []
+        if isinstance(notes, dict):
+            notes = [notes]
+        clean_notes: list[dict] = []
+        if isinstance(notes, list):
+            for n in notes:
+                if not isinstance(n, dict):
+                    continue
+                title = str(n.get("title") or "").strip()
+                text = str(n.get("text") or "").strip()
+                if text:
+                    clean_notes.append({"title": title, "text": text})
+        r["notes"] = clean_notes
     return recipes
 
 

@@ -156,6 +156,7 @@ function mixer() {
         name: r.name || '', description: r.description || '', servings: r.servings,
         yield: r.yield || '', image_url: r.image_url || '', tags: r.tags || [],
         categories: r.categories || [], source_url: r.source_url || '',
+        notes: (r.notes || []).map(n => ({ title: n.title || '', text: n.text || '' })),
         ingredients: (r.ingredients || []).map(i => ({ quantity: i.quantity ?? '', unit: i.unit ?? '', food: i.food ?? '', note: i.note ?? '', title: i.title ?? '' })),
       };
       this.instructionsText = (r.instructions || []).join('\n');
@@ -163,6 +164,8 @@ function mixer() {
       this.saveSession();
     },
     addIngredient() { this.recipe.ingredients.push({ quantity: '', unit: '', food: '', note: '', title: '' }); },
+    addNote() { (this.recipe.notes ||= []).push({ title: '', text: '' }); },
+    removeNote(i) { this.recipe.notes.splice(i, 1); },
     addCategory(name) {
       const v = (name == null ? this.categoryInput : name).trim();
       this.categoryInput = '';
@@ -203,6 +206,7 @@ function mixer() {
       let s; try { s = JSON.parse(localStorage.getItem('mm-session') || 'null'); } catch (_) { s = null; }
       if (s && s.recipe && ((s.recipe.name || '').trim() || (s.recipe.ingredients || []).length || (s.queue || []).length)) {
         this.recipe = s.recipe; this.instructionsText = s.instructionsText || ''; this.queue = s.queue || [];
+        if (!Array.isArray(this.recipe.notes)) this.recipe.notes = [];   // older sessions predate notes
         this.view = 'review'; this.showToast('Restored your in-progress review');
       }
     },
@@ -247,6 +251,8 @@ function mixer() {
             .map(i => ({ quantity: parseQty(i.quantity), unit: blank(i.unit), food: blank(i.food), note: blank(i.note), title: blank(i.title) })),
           instructions: this.instructionsText.split('\n').map(s => s.trim()).filter(Boolean), tags: [],
           categories: this.recipe.categories || [], source_url: this.recipe.source_url || '',
+          notes: (this.recipe.notes || []).filter(n => (n.text || '').trim() || (n.title || '').trim())
+            .map(n => ({ title: (n.title || '').trim(), text: (n.text || '').trim() })),
         };
         if (!body.name) throw new Error('Give the recipe a name first.');
         const r = await fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' });
@@ -278,7 +284,7 @@ function mixer() {
 }
 
 // ── helpers ────────────────────────────────────────────────────────────
-function emptyRecipe() { return { name: '', description: '', servings: null, yield: '', image_url: '', tags: [], categories: [], source_url: '', ingredients: [] }; }
+function emptyRecipe() { return { name: '', description: '', servings: null, yield: '', image_url: '', tags: [], categories: [], notes: [], source_url: '', ingredients: [] }; }
 function emptyCfg() { return { mealie_url: '', mealie_token: '', ai_key: '', ai_base: '', ai_model: '', auth_user: '', auth_pass: '', api_key: '' }; }
 function api(path, opts = {}) {
   return fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }, ...opts });

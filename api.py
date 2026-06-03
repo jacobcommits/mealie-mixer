@@ -54,6 +54,12 @@ class Ingredient(BaseModel):
     title: str | None = None   # section heading on the first ingredient of a group
 
 
+class RecipeNote(BaseModel):
+    """A useful culinary tip (storage, substitutions, ...) → Mealie recipe notes."""
+    title: str = ""
+    text: str = ""
+
+
 class Recipe(BaseModel):
     """Typed recipe — the contract between extract, the agent, and push.
 
@@ -72,6 +78,7 @@ class Recipe(BaseModel):
     instructions: list[str] = []
     tags: list[str] = []
     categories: list[str] = []
+    notes: list[RecipeNote] = []
     source_url: str = ""
     image_url: str | None = None
 
