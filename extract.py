@@ -19,6 +19,8 @@ import io
 import json
 import os
 import sys
+import threading
+import time
 
 from openai import OpenAI
 from PIL import Image
@@ -102,6 +104,29 @@ def image_to_data_url(path: str) -> str:
     return f"data:image/jpeg;base64,{b64}"
 
 
+# ── AI rate limiting ───────────────────────────────────────────────────
+_rpm_lock = threading.Lock()
+_rpm_last = [0.0]
+
+
+def _rpm_wait() -> None:
+    """Enforce the configured AI requests-per-minute cap (AI_RPM_LIMIT). "" or 0 means
+    no limit. Serializes LLM calls app-wide (including the cookbook background job) so
+    a bulk import doesn't trip the provider's rate limit. Read live from config."""
+    try:
+        rpm = float(config.get("AI_RPM_LIMIT") or 0)
+    except (TypeError, ValueError):
+        rpm = 0
+    if rpm <= 0:
+        return
+    gap = 60.0 / rpm
+    with _rpm_lock:
+        wait = _rpm_last[0] + gap - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _rpm_last[0] = time.monotonic()
+
+
 # ── The core call (this is what the UI will import and use) ────────────
 def _structure(content: list) -> list[dict]:
     """Send a user-content payload (text prompt + images, or just text) to the
@@ -112,6 +137,7 @@ def _structure(content: list) -> list[dict]:
         raise RuntimeError("AI_API_KEY is not set — configure it in the setup page or .env.")
 
     client = OpenAI(base_url=config.get("AI_BASE_URL"), api_key=api_key)
+    _rpm_wait()   # honour the configured AI requests/min cap (bulk imports)
     resp = client.chat.completions.create(
         model=config.get("AI_MODEL"),
         messages=[

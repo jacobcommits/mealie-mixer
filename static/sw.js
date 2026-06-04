@@ -2,7 +2,7 @@
 // offline. NETWORK-FIRST (so updates always land when online); the cache is
 // just the offline fallback. Never touches /api, /docs, /admin.
 
-const CACHE = 'mealie-mixer-v2';
+const CACHE = 'mealie-mixer-v3';
 const SHELL = [
   '/', '/app.js', '/style.css', '/vendor/alpine.min.js',
   '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png',
@@ -51,8 +51,12 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
   if (url.pathname.startsWith('/api') || url.pathname.startsWith('/docs') || url.pathname.startsWith('/admin')) return;
+  // network-first with REVALIDATION: `cache: 'no-cache'` makes the SW's own fetch
+  // skip stale HTTP-cache hits (it still 304s when unchanged), so a fresh deploy of
+  // app.js/index.html always lands without a manual hard-refresh. Offline still falls
+  // back to the cached copy below.
   e.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-cache' })
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(req, copy));

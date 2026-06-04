@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0f172a" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="icon" type="image/png" href="/icons/favicon.png" />
+  <link rel="apple-touch-icon" href="/icons/icon-180.png" />
   <title>Mealie Mixer</title>
   <link rel="stylesheet" href="/style.css" />
   <script defer src="/app.js"></script>
@@ -15,12 +16,19 @@
 <div id="app" x-data="mixer()" x-init="init()" x-cloak>
 
   <header class="topbar">
-    <span class="brand">🍲&nbsp;Mealie&nbsp;Mixer</span>
-    <button class="iconbtn" x-show="['input','review','done','history','settings'].includes(view)"
+    <button class="brand brandbtn" @click="goHome()" title="Home"><img src="/icons/brand.png" class="brandlogo" alt="" />Mealie&nbsp;Mixer</button>
+    <button class="iconbtn" x-show="['input','review','done','history','settings','cookbook-upload','cookbook','cookbook-progress','cookbook-review'].includes(view)"
             @click="menuOpen = true" title="Menu">☰</button>
   </header>
 
   <main class="wrap">
+
+    <!-- cookbook job banner (close & come back) -->
+    <button class="cbbanner" x-show="cookbookJob && !['cookbook-progress','cookbook-review'].includes(view)" x-cloak
+            @click="openCookbookJob()"
+            x-text="cookbookJob && cookbookJob.status === 'done'
+              ? ('📚 Cookbook ready — ' + (cookbookJob.total - cookbookJob.failed) + ' to review →')
+              : ('📚 Cookbook processing… ' + (cookbookJob ? cookbookJob.done : 0) + ' / ' + (cookbookJob ? cookbookJob.total : 0))"></button>
 
     <!-- gate / loading -->
     <template x-if="view === 'gate'">
@@ -58,6 +66,9 @@
         <small class="warn" x-show="pinned('AI_API_KEY')">⚠ AI key set by an env var</small>
         <input class="input" type="text" placeholder="AI base URL" x-model="cfg.ai_base" />
         <input class="input" type="text" placeholder="AI model" x-model="cfg.ai_model" />
+        <input class="input" type="number" min="0" placeholder="AI requests/min limit (0 or blank = no limit)" x-model="cfg.ai_rpm" />
+        <small class="muted small">Caps how fast bulk imports (e.g. a cookbook) call the AI — set it below your provider's per-minute limit if you hit rate errors.</small>
+        <small class="warn" x-show="pinned('AI_RPM_LIMIT')">⚠ rate limit set by an env var</small>
         <button class="btn ghost sm" @click="testAi()">Test AI (≈1 token)</button>
         <small :class="aiTest.ok ? 'ok' : 'err'" x-text="aiTest.msg"></small>
 
@@ -87,6 +98,7 @@
     <template x-if="view === 'input'">
       <div class="card">
         <h2>Add a recipe</h2>
+        <p class="muted small">📚 Whole cookbook or a multi-recipe PDF? <button type="button" class="linkbtn" @click="openCookbook()">Use Cookbook import</button> (in the ☰ menu) for much better results.</p>
         <label class="filezone">
           <input type="file" accept="image/*,.pdf,.md,.markdown,.txt,.eml" multiple
                  @change="fileList = $event.target.files" />
@@ -246,11 +258,120 @@
         <button class="btn ghost" @click="view = 'input'">← Back</button>
       </div>
     </template>
+
+    <!-- cookbook: upload -->
+    <template x-if="view === 'cookbook-upload'">
+      <div class="card">
+        <h2>📚 Cookbook import</h2>
+        <p class="muted small">Upload a recipe-book PDF — it finds each recipe (with its photo), you pick which to import, the AI structures them, then you review and push the lot. Best for text-based (not scanned) PDFs.</p>
+        <label class="filezone cookbookzone">
+          <input type="file" accept=".pdf,application/pdf" @change="pickCookbook($event)" />
+          <span>📚 Choose a cookbook PDF</span>
+        </label>
+        <p class="err" x-show="error" x-text="error"></p>
+        <button class="btn ghost" @click="view = 'input'">← Back</button>
+      </div>
+    </template>
+
+    <!-- cookbook: pick recipes -->
+    <template x-if="view === 'cookbook'">
+      <div class="card">
+        <h2>Cookbook — pick recipes</h2>
+        <p class="muted small"><span x-text="cbRecipes.length"></span> found · <span x-text="cbSelCount()"></span> selected</p>
+        <div class="row">
+          <button class="btn ghost" @click="cbToggleAll(true)">Select all</button>
+          <button class="btn ghost" @click="cbToggleAll(false)">None</button>
+        </div>
+        <div class="cblist">
+          <template x-for="(r, i) in cbRecipes" :key="i">
+            <label class="cbrow">
+              <input type="checkbox" x-model="r.sel" />
+              <img class="cbthumb" :src="r.image" x-show="r.image" alt="" />
+              <div class="cbthumb cbnoimg" x-show="!r.image">🍽</div>
+              <div class="cbmeta">
+                <span class="cbtitle" x-text="r.title"></span>
+                <span class="warn small" x-show="cbImported(r.title)">already imported</span>
+              </div>
+            </label>
+          </template>
+        </div>
+        <p class="err" x-show="error" x-text="error"></p>
+        <div class="row">
+          <button class="btn ghost" @click="reset()">Cancel</button>
+          <button class="btn primary" :disabled="!cbSelCount()" @click="cbStructure()" x-text="'Structure ' + cbSelCount() + ' →'"></button>
+        </div>
+      </div>
+    </template>
+
+    <!-- cookbook: processing (server-side background job) -->
+    <template x-if="view === 'cookbook-progress'">
+      <div class="card center">
+        <div class="spinner big"></div>
+        <h2>Structuring your cookbook…</h2>
+        <p class="muted" x-text="(cookbookJob ? cookbookJob.done : 0) + ' / ' + (cookbookJob ? cookbookJob.total : 0) + ' done' + (cookbookJob && cookbookJob.failed ? ' · ' + cookbookJob.failed + ' failed' : '')"></p>
+        <div class="cbbar"><div class="cbbar-fill" :style="'width:' + (cookbookJob && cookbookJob.total ? Math.round(100 * cookbookJob.done / cookbookJob.total) : 0) + '%'"></div></div>
+        <p class="muted small">This runs on the server — you can close this tab and come back; it'll be waiting for you (☰ → Cookbook, or the banner up top).</p>
+        <div class="row">
+          <button class="btn ghost" @click="cbCancel()">⊘ Stop</button>
+          <button class="btn ghost" @click="view = 'input'">Leave it running</button>
+        </div>
+      </div>
+    </template>
+
+    <!-- cookbook: bulk review + push -->
+    <template x-if="view === 'cookbook-review'">
+      <div class="card">
+        <h2>Review &amp; push</h2>
+        <p class="muted small"><span x-text="cbStructured.length"></span> structured · <span x-text="cbPushCount()"></span> selected</p>
+        <div class="cblist">
+          <template x-for="(s, i) in cbStructured" :key="i">
+            <div class="cbitem">
+              <div class="cbrow">
+                <input type="checkbox" x-model="s.sel" @change="cbSaveReview()" />
+                <button class="histtoggle" @click="cbToggleRow(i)" x-text="cbExpanded === i ? '▾' : '▸'"></button>
+                <img class="cbthumb" :src="s.image" x-show="s.image" alt="" />
+                <div class="cbthumb cbnoimg" x-show="!s.image">🍽</div>
+                <div class="cbmeta">
+                  <span class="cbtitle" x-text="s.recipe.name || '(untitled)'"></span>
+                  <span class="muted small" x-text="(s.recipe.ingredients||[]).length + ' ingredients · ' + (s.recipe.instructions||[]).length + ' steps'"></span>
+                  <div class="cbbadges">
+                    <span class="badge dup" x-show="cbNameExists(s.recipe.name)">already in Mealie</span>
+                    <span class="badge near" x-show="cbNearFoods(s.recipe)" x-text="'⚠ ' + cbNearFoods(s.recipe) + ' near-match food' + (cbNearFoods(s.recipe) > 1 ? 's' : '') + ' — edit to tidy'"></span>
+                  </div>
+                </div>
+                <button class="histrestore" @click="cbEditOne(i)">edit</button>
+                <button class="x" @click="cbRemove(i)" title="remove">✕</button>
+              </div>
+              <div class="histpreview" x-show="cbExpanded === i" x-cloak>
+                <p class="muted small" x-show="s.recipe.servings || s.recipe.yield"
+                   x-text="'Serves ' + (s.recipe.servings || '?') + (s.recipe.yield ? ' · ' + s.recipe.yield : '')"></p>
+                <ul class="prevings">
+                  <template x-for="(ing, k) in (s.recipe.ingredients||[])" :key="k"><li x-text="ingLine(ing)"></li></template>
+                </ul>
+                <ol class="prevsteps">
+                  <template x-for="(st, k) in (s.recipe.instructions||[])" :key="k"><li x-text="st"></li></template>
+                </ol>
+                <template x-for="(n, k) in (s.recipe.notes||[])" :key="k">
+                  <p class="muted small" x-text="'📝 ' + (n.title ? n.title + ': ' : '') + n.text"></p>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+        <p class="err" x-show="error" x-text="error"></p>
+        <div class="row">
+          <button class="btn ghost" @click="cbDiscardReview()">Discard all</button>
+          <button class="btn primary" :disabled="!cbPushCount()" @click="cbPushAll()" x-text="'Push ' + cbPushCount() + ' to Mealie'"></button>
+        </div>
+      </div>
+    </template>
   </main>
 
   <footer class="actionbar" x-show="view === 'review'">
-    <button class="btn ghost" @click="discard()" x-text="queue.length ? 'Discard this' : 'Discard'"></button>
-    <button class="btn primary" :disabled="loading" @click="push()">✅ Approve &amp; push</button>
+    <button class="btn ghost" x-show="cbEditIndex === null" @click="discard()" x-text="queue.length ? 'Discard this' : 'Discard'"></button>
+    <button class="btn primary" x-show="cbEditIndex === null" :disabled="loading" @click="push()">✅ Approve &amp; push</button>
+    <button class="btn ghost" x-show="cbEditIndex !== null" @click="cbCancelEdit()">← Discard edits</button>
+    <button class="btn primary" x-show="cbEditIndex !== null" @click="cbSaveEdit()">Save &amp; back</button>
   </footer>
 
   <!-- side menu (hamburger) -->
@@ -260,6 +381,8 @@
       <span class="brand">🍲&nbsp;Menu</span>
       <button class="iconbtn" @click="menuOpen = false" title="Close">✕</button>
     </div>
+    <button class="drawer-item" @click="openCookbook()">📚 <span>Cookbook import</span>
+      <span class="menudot" x-show="cookbookJob" x-cloak x-text="cookbookJob && cookbookJob.status === 'done' ? 'ready' : 'running'"></span></button>
     <button class="drawer-item" @click="openHistory()">🕘 <span>Import history</span></button>
     <button class="drawer-item" @click="openSettings()">⚙️ <span>Settings</span></button>
     <button class="drawer-item" x-show="cfgInfo.login_required" @click="menuOpen = false; logout()">🚪 <span>Log out</span></button>

@@ -3,7 +3,7 @@
 
 function mixer() {
   return {
-    view: 'gate',   // gate | login | setup | settings | input | review | done | history
+    view: 'gate',   // gate | login | setup | settings | input | review | done | history | cookbook-upload | cookbook | cookbook-review
     languages: ['English', 'Polish', 'German', 'French', 'Spanish', 'Italian', 'Ukrainian'],
     foods: [],
     categories: [],
@@ -24,6 +24,8 @@ function mixer() {
     photoFile: null, photoPreview: '', categoryInput: '',
     sourceImages: [], zoomSrc: '',
     dupModal: false, _dupOk: false,
+    // cookbook (B7, dev)
+    cbRecipes: [], cbStructured: [], cbExpanded: null, cbEditIndex: null, cookbookJob: null, cbReviewJobId: '',
     // done
     lastName: '', lastUrl: '',
     // ui
@@ -46,6 +48,8 @@ function mixer() {
       try { this.history = (await getJSON('/api/history')).items || []; } catch (_) { this.history = []; }
       this.error = ''; this.view = 'input';
       this.restoreSession();
+      // a saved cookbook review wins; otherwise pick up a running/done job (close & come back)
+      if (!(await this.cbRestoreReview())) this.cbResume();
       await this.maybeReadShare();
     },
     async doLogin() {
@@ -68,6 +72,7 @@ function mixer() {
         mealie_url: c.mealie_url || '', mealie_token: '', ai_key: '', api_key: '',
         ai_base: c.ai_base_url || 'https://generativelanguage.googleapis.com/v1beta/openai/',
         ai_model: c.ai_model || 'gemini-3.1-flash-lite',
+        ai_rpm: c.ai_rpm || '',
         auth_user: c.auth_user || '', auth_pass: '',
       };
     },
@@ -83,6 +88,16 @@ function mixer() {
       this.menuOpen = false; this.expandedId = null;
       try { this.history = (await getJSON('/api/history')).items || []; } catch (_) {}
       this.error = ''; this.view = 'history';
+    },
+    goHome() {
+      if (['gate', 'login', 'setup'].includes(this.view)) return;   // not navigable yet
+      this.menuOpen = false; this.error = ''; this.view = 'input';
+    },
+    openCookbook() {
+      if (this.cookbookJob) { this.openCookbookJob(); return; }   // a job is waiting — go to it
+      this.menuOpen = false; this.error = '';
+      this.cbRecipes = []; this.cbStructured = []; this.cbExpanded = null; this.cbEditIndex = null;
+      this.view = 'cookbook-upload';
     },
     async toggleHist(h) {
       if (this.expandedId === h.id) { this.expandedId = null; return; }
@@ -178,6 +193,7 @@ function mixer() {
 
     loadRecipe(r) {
       this.clearPhoto();   // each recipe starts without a picked photo
+      this.cbEditIndex = null;   // normal review flow (not a cookbook edit) unless set after
       this.recipe = {
         name: r.name || '', description: r.description || '', servings: r.servings,
         yield: r.yield || '', image_url: r.image_url || '', tags: r.tags || [],
@@ -346,12 +362,187 @@ function mixer() {
       this.recipe = emptyRecipe(); this.instructionsText = ''; this.queue = []; this.view = 'input';
     },
     showToast(m) { this.toast = m; clearTimeout(this._t); this._t = setTimeout(() => this.toast = '', 2600); },
+
+    // ── Cookbook bulk import (B7, dev) ──────────────────────────────────
+    async pickCookbook(e) {
+      const f = e.target.files && e.target.files[0];
+      e.target.value = '';                 // allow re-picking the same file
+      if (!f) return;
+      this.error = ''; this.loadingMsg = 'Reading cookbook…'; this.loading = true;
+      try {
+        const fd = new FormData(); fd.append('file', f);
+        const r = await fetch('/api/cookbook/split', { method: 'POST', body: fd, credentials: 'same-origin' });
+        if (!r.ok) throw new Error(await detail(r));
+        const recipes = (await r.json()).recipes || [];
+        if (!recipes.length) throw new Error('No recipes found in that PDF.');
+        this.cbRecipes = recipes.map(x => ({ ...x, sel: !this.cbImported(x.title) }));  // skip dupes by default
+        this.view = 'cookbook';
+      } catch (e) { this.error = String(e.message || e); }
+      finally { this.loading = false; }
+    },
+    cbImported(title) {
+      const n = (title || '').trim().toLowerCase();
+      return !!n && this.history.some(h => h.status !== 'discarded' && (h.name || '').trim().toLowerCase() === n);
+    },
+    cbSelCount() { return this.cbRecipes.filter(r => r.sel).length; },
+    cbToggleAll(v) { this.cbRecipes.forEach(r => r.sel = v); },
+    async cbStructure() {
+      // Phase B: hand the selected chunks to a server-side background job, then poll —
+      // so a long run survives closing the tab.
+      const chosen = this.cbRecipes.filter(r => r.sel);
+      if (!chosen.length) { this.error = 'Select at least one recipe.'; return; }
+      this.error = ''; this.loading = true; this.loadingMsg = 'Starting…';
+      try {
+        const body = { recipes: chosen.map(r => ({ text: r.text, image: r.image, title: r.title })), language: this.language };
+        const r = await api('/api/cookbook/job', { method: 'POST', body: JSON.stringify(body) });
+        if (!r.ok) throw new Error(await detail(r));
+        const { job_id } = await r.json();
+        this.cookbookJob = { job_id, status: 'running', done: 0, total: chosen.length, failed: 0 };
+        try { localStorage.setItem('mm-cookbook-job', job_id); } catch (_) {}
+        this.view = 'cookbook-progress';
+        this.cbPoll();
+      } catch (e) { this.error = String(e.message || e); }
+      finally { this.loading = false; }
+    },
+    async cbPoll() {
+      clearTimeout(this._cbTimer);
+      const jid = this.cookbookJob && this.cookbookJob.job_id;
+      if (!jid) return;
+      try {
+        const job = await getJSON('/api/cookbook/job/' + jid);
+        this.cookbookJob = { job_id: jid, status: job.status, done: job.done, total: job.total, failed: job.failed };
+        if (job.status === 'done') {
+          if (this.view === 'cookbook-progress') this.cbLoadJob(job);
+          else this.showToast('Cookbook ready — ' + (job.total - job.failed) + ' to review');
+          return;   // stop polling
+        }
+      } catch (_) {}
+      this._cbTimer = setTimeout(() => this.cbPoll(), 2000);
+    },
+    cbLoadJob(job) {
+      this.cbReviewJobId = job.id || '';
+      this.cbStructured = (job.recipes || []).map((x, i) => ({ recipe: x.recipe, image: x.image, sel: true, idx: i }));
+      this.cbExpanded = null; this.cbClearJob(); this.view = 'cookbook-review';
+      this.cbSaveReview();
+    },
+    cbClearJob() { this.cookbookJob = null; try { localStorage.removeItem('mm-cookbook-job'); } catch (_) {} },
+    async cbCancel() {
+      const jid = this.cookbookJob && this.cookbookJob.job_id;
+      if (jid) { try { await api('/api/cookbook/job/' + jid + '/cancel', { method: 'POST', body: '{}' }); } catch (_) {} }
+      clearTimeout(this._cbTimer); this.cbClearJob();
+      this.showToast('Stopped'); this.view = 'cookbook-upload';
+    },
+    // ── bulk-review extras: dupe + near-match badges, refresh-persistence ──
+    cbNameExists(name) {
+      const n = (name || '').trim().toLowerCase();
+      return !!n && this.recipeNames.some(x => x.toLowerCase() === n);
+    },
+    cbNearFoods(recipe) {
+      return (recipe.ingredients || []).filter(i => this.foodStatus(i.food) === 'near').length;
+    },
+    cbSaveReview() {
+      try {
+        if (!this.cbStructured.length) { localStorage.removeItem('mm-cookbook-review'); return; }
+        localStorage.setItem('mm-cookbook-review', JSON.stringify({
+          job_id: this.cbReviewJobId || '',
+          items: this.cbStructured.map(s => ({ recipe: s.recipe, sel: s.sel, idx: s.idx })),
+        }));
+      } catch (_) {}
+    },
+    async cbRestoreReview() {
+      let saved; try { saved = JSON.parse(localStorage.getItem('mm-cookbook-review') || 'null'); } catch (_) {}
+      if (!saved || !(saved.items || []).length) return false;
+      this.cbReviewJobId = saved.job_id || '';
+      this.cbStructured = saved.items.map(it => ({ recipe: it.recipe, image: null, sel: it.sel !== false, idx: it.idx }));
+      if (saved.job_id) {   // re-hydrate photos from the server job (stored without images)
+        try {
+          const recs = (await getJSON('/api/cookbook/job/' + saved.job_id)).recipes || [];
+          this.cbStructured.forEach(s => { if (s.idx != null && recs[s.idx]) s.image = recs[s.idx].image; });
+        } catch (_) {}
+      }
+      this.cbExpanded = null; this.view = 'cookbook-review';
+      return true;
+    },
+    cbClearReview() { this.cbStructured = []; this.cbReviewJobId = ''; try { localStorage.removeItem('mm-cookbook-review'); } catch (_) {} },
+    cbDiscardReview() { this.cbClearReview(); this.cbExpanded = null; this.error = ''; this.view = 'input'; },
+    async cbResume() {
+      let jid; try { jid = localStorage.getItem('mm-cookbook-job'); } catch (_) {}
+      if (!jid) return;
+      try {
+        const job = await getJSON('/api/cookbook/job/' + jid);
+        this.cookbookJob = { job_id: jid, status: job.status, done: job.done, total: job.total, failed: job.failed };
+        if (job.status !== 'done') this.cbPoll();   // keep polling in the background; banner shows status
+      } catch (_) { this.cbClearJob(); }
+    },
+    async openCookbookJob() {
+      this.menuOpen = false;
+      const jid = this.cookbookJob && this.cookbookJob.job_id;
+      if (!jid) return;
+      try {
+        const job = await getJSON('/api/cookbook/job/' + jid);
+        if (job.status === 'done') this.cbLoadJob(job);
+        else { this.view = 'cookbook-progress'; this.cbPoll(); }
+      } catch (_) { this.cbClearJob(); }
+    },
+    cbRemove(i) { if (this.cbExpanded === i) this.cbExpanded = null; this.cbStructured.splice(i, 1); this.cbSaveReview(); },
+    cbToggleRow(i) { this.cbExpanded = this.cbExpanded === i ? null : i; },
+    cbEditOne(i) {
+      this.loadRecipe(this.cbStructured[i].recipe);   // full edit in the normal review screen
+      this.cbEditIndex = i;
+      this.photoPreview = this.cbStructured[i].image || '';   // show the cookbook photo (display only)
+      this.error = ''; this.view = 'review';
+    },
+    cbSaveEdit() {
+      if (this.cbEditIndex === null) return;
+      const r = this.recipe;
+      this.cbStructured[this.cbEditIndex].recipe = {
+        name: (r.name || '').trim(), description: r.description || '', servings: numOrNull(r.servings),
+        yield: r.yield || '', image_url: null, tags: [], categories: r.categories || [], source_url: r.source_url || '',
+        notes: (r.notes || []).filter(n => (n.text || '').trim() || (n.title || '').trim())
+          .map(n => ({ title: (n.title || '').trim(), text: (n.text || '').trim() })),
+        ingredients: r.ingredients.filter(i => blank(i.food) || blank(i.note))
+          .map(i => ({ quantity: parseQty(i.quantity), unit: blank(i.unit), food: blank(i.food), note: blank(i.note), title: blank(i.title) })),
+        instructions: this.instructionsText.split('\n').map(s => s.trim()).filter(Boolean),
+      };
+      this.cbEditIndex = null; this.clearPhoto(); this.error = ''; this.view = 'cookbook-review';
+      this.cbSaveReview();
+    },
+    cbCancelEdit() { this.cbEditIndex = null; this.clearPhoto(); this.error = ''; this.view = 'cookbook-review'; },
+    cbPushCount() { return this.cbStructured.filter(s => s.sel).length; },
+    async cbPushAll() {
+      const chosen = this.cbStructured.filter(s => s.sel);
+      if (!chosen.length) { this.error = 'Select at least one to push.'; return; }
+      this.error = ''; this.loading = true;
+      let ok = 0, fail = 0;
+      try {
+        for (let i = 0; i < chosen.length; i++) {
+          this.loadingMsg = 'Pushing ' + (i + 1) + ' / ' + chosen.length + '…';
+          try {
+            const r = await fetch('/api/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(chosen[i].recipe), credentials: 'same-origin' });
+            if (!r.ok) { fail++; continue; }
+            const out = await r.json();
+            if (chosen[i].image) { try { await this.uploadDataUrl(out.slug, chosen[i].image); } catch (_) {} }
+            ok++;
+          } catch (_) { fail++; }
+          await new Promise(res => setTimeout(res, 400));
+        }
+        try { this.history = (await getJSON('/api/history')).items || []; } catch (_) {}
+        this.cbRecipes = []; this.cbClearReview(); this.view = 'input';
+        this.showToast('Pushed ' + ok + ' recipe(s)' + (fail ? ', ' + fail + ' failed' : ''));
+      } finally { this.loading = false; }
+    },
+    async uploadDataUrl(slug, dataUrl) {
+      const blob = await (await fetch(dataUrl)).blob();
+      const fd = new FormData(); fd.append('file', blob, 'photo.jpg');
+      const r = await fetch('/api/recipe-image/' + slug, { method: 'PUT', body: fd, credentials: 'same-origin' });
+      if (!r.ok) throw new Error('image upload failed');
+    },
   };
 }
 
 // ── helpers ────────────────────────────────────────────────────────────
 function emptyRecipe() { return { name: '', description: '', servings: null, yield: '', image_url: '', tags: [], categories: [], notes: [], source_url: '', ingredients: [] }; }
-function emptyCfg() { return { mealie_url: '', mealie_token: '', ai_key: '', ai_base: '', ai_model: '', auth_user: '', auth_pass: '', api_key: '' }; }
+function emptyCfg() { return { mealie_url: '', mealie_token: '', ai_key: '', ai_base: '', ai_model: '', ai_rpm: '', auth_user: '', auth_pass: '', api_key: '' }; }
 function api(path, opts = {}) {
   return fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }, ...opts });
 }

@@ -25,8 +25,10 @@ from fastapi import APIRouter, Body, Depends, File, Form, Header, HTTPException,
 from pydantic import BaseModel, Field
 
 import config
+import cookbook
 import core
 import history
+import jobs
 from extract import (
     extract_recipes,
     extract_recipes_from_text,
@@ -181,6 +183,7 @@ class ConfigBody(BaseModel):
     auth_user: str = ""
     auth_pass: str = ""
     api_key: str = ""
+    ai_rpm: str = ""
 
 
 router = APIRouter(prefix="/api")
@@ -367,6 +370,7 @@ def api_get_config(request: Request):
             "mealie_url": config.get("MEALIE_URL"),
             "ai_base_url": config.get("AI_BASE_URL"),
             "ai_model": config.get("AI_MODEL"),
+            "ai_rpm": config.get("AI_RPM_LIMIT"),
             "auth_user": config.get("MIXER_AUTH_USER"),
             "has_mealie_token": bool(config.get("MEALIE_TOKEN")),
             "has_ai_key": bool(config.get("AI_API_KEY")),
@@ -383,6 +387,7 @@ def api_set_config(body: ConfigBody):
             mealie_url=body.mealie_url, mealie_token=body.mealie_token,
             ai_key=body.ai_key, ai_base=body.ai_base, ai_model=body.ai_model,
             auth_user=body.auth_user, auth_pass=body.auth_pass, api_key=body.api_key,
+            ai_rpm=body.ai_rpm,
         )
     except core.ConfigError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -429,6 +434,63 @@ def api_categories():
 def api_recipe_names():
     """Existing recipe names for the review-step duplicate warning."""
     return {"names": fetch_recipe_names()}
+
+
+@router.post("/cookbook/split", dependencies=[Depends(require_access)])
+async def api_cookbook_split(file: UploadFile = File(...)):
+    """Split a cookbook PDF into per-recipe chunks (text + hero image) — B7. No LLM;
+    the browser then structures each chunk via /api/extract and pushes via /api/push."""
+    data = await file.read()
+    try:
+        recipes = cookbook.split_cookbook(data)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Couldn't read that PDF: {str(e)[:200]}")
+    if not recipes:
+        raise HTTPException(
+            status_code=400,
+            detail="No recipe pages found. Bulk cookbook import expects a recipe-per-page "
+                   "layout with 'Ingredients' and 'Directions' sections (like most photo "
+                   "cookbooks). This looks like a text-only / LaTeX-style or scanned book — "
+                   "for those, screenshot an individual recipe and use the normal image "
+                   "import, or paste one recipe's text at a time.",
+        )
+    return {"recipes": recipes}
+
+
+class CookbookJobBody(BaseModel):
+    recipes: list[dict] = []
+    language: str = "English"
+
+
+@router.post("/cookbook/job", dependencies=[Depends(require_access)])
+def api_cookbook_job(body: CookbookJobBody):
+    """Start a background structuring job for the selected cookbook chunks (B7 Phase B).
+    Returns a job_id the browser polls; the run survives closing the tab."""
+    if not body.recipes:
+        raise HTTPException(status_code=400, detail="No recipes selected to process.")
+    return {"job_id": jobs.start_job(body.recipes, body.language)}
+
+
+@router.get("/cookbook/job/{job_id}", dependencies=[Depends(require_access)])
+def api_cookbook_job_status(job_id: str):
+    """Status + (when done) structured recipes for a cookbook job."""
+    job = jobs.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return job
+
+
+@router.post("/cookbook/job/{job_id}/cancel", dependencies=[Depends(require_access)])
+def api_cookbook_job_cancel(job_id: str):
+    """Stop a running cookbook job (e.g. wrong book uploaded)."""
+    jobs.cancel_job(job_id)
+    return {"ok": True}
+
+
+@router.get("/cookbook/jobs", dependencies=[Depends(require_access)])
+def api_cookbook_jobs():
+    """Recent cookbook job summaries — powers the 'ready to review' banner/badge."""
+    return {"jobs": jobs.list_jobs()}
 
 
 @router.get("/history", dependencies=[Depends(require_access)])

@@ -38,6 +38,7 @@ DEFAULTS = {
     "AI_BASE_URL": "https://generativelanguage.googleapis.com/v1beta/openai/",
     "AI_MODEL": "gemini-3.1-flash-lite",
     "AI_API_KEY": "",
+    "AI_RPM_LIMIT": "",           # cap on AI requests/min (bulk imports); "" or 0 = no limit
     "MEALIE_URL": "",
     "MEALIE_TOKEN": "",
     "MIXER_AUTH_USER": "",

@@ -37,8 +37,17 @@ def generate_api_key() -> str:
     return secrets.token_urlsafe(32)
 
 
+def _clean_rpm(v) -> str:
+    """Normalise the AI requests/min field to a positive integer string, or "" (no limit)."""
+    try:
+        n = float(str(v or "").strip())
+    except (TypeError, ValueError):
+        return ""
+    return str(int(n)) if n > 0 else ""
+
+
 def apply_config(*, mealie_url, mealie_token, ai_key, ai_base, ai_model,
-                 auth_user, auth_pass, api_key=""):
+                 auth_user, auth_pass, api_key="", ai_rpm=""):
     """Validate + persist config to the data volume.
 
     Mealie URL/token + AI key are required. AI base/model fall back to defaults.
@@ -57,6 +66,9 @@ def apply_config(*, mealie_url, mealie_token, ai_key, ai_base, ai_model,
         "AI_BASE_URL": (ai_base or "").strip() or config.DEFAULTS["AI_BASE_URL"],
         "AI_MODEL": (ai_model or "").strip() or config.DEFAULTS["AI_MODEL"],
         "MIXER_API_KEY": (api_key or "").strip() or config.get("MIXER_API_KEY"),
+        # rate limit: a non-negative number, else blank (= no limit). Visible field, so
+        # blank clears it rather than keeping the old value.
+        "AI_RPM_LIMIT": _clean_rpm(ai_rpm),
     }
     missing = [k for k in ("MEALIE_URL", "MEALIE_TOKEN", "AI_API_KEY") if not updates[k]]
     if missing:
