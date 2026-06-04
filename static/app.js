@@ -146,7 +146,7 @@ function mixer() {
       this.error = ''; this.loadingMsg = 'Reading your recipe…'; this.loading = true;
       try { localStorage.setItem('mm-lang', this.language); } catch (_) {}   // remember for next time / share flow
       this.clearSourceImages();
-      if (this.fileList && this.fileList.length) this.sourceImages = [...this.fileList].map(f => URL.createObjectURL(f));
+      if (this.fileList && this.fileList.length) this.sourceImages = [...this.fileList].filter(f => (f.type || '').startsWith('image/')).map(f => URL.createObjectURL(f));
       try {
         const fd = new FormData();
         if (this.fileList && this.fileList.length) { for (const f of this.fileList) fd.append('files', f); }

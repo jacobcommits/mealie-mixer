@@ -17,6 +17,7 @@ import argparse
 import base64
 import io
 import json
+import os
 import sys
 
 from openai import OpenAI
@@ -152,6 +153,77 @@ def extract_recipes_from_text(
     )
     content = [{"type": "text", "text": f"{prompt}\n\n--- RECIPE TEXT ---\n{text}"}]
     return _structure(content)
+
+
+# ── Document import (pdf / md / txt / eml) — Phase B6 ───────────────────
+DOCUMENT_EXTS = (".pdf", ".md", ".markdown", ".txt", ".eml")
+
+
+def is_document(filename: str) -> bool:
+    """True for upload types we route through the text pipeline instead of vision."""
+    return os.path.splitext(filename or "")[1].lower() in DOCUMENT_EXTS
+
+
+def file_to_text(filename: str, data: bytes) -> str:
+    """Extract plain text from an uploaded document so it can feed the SAME text
+    structuring path as pasted text (one LLM call, same JSON out). Raises ValueError
+    with a clear message when a PDF has no extractable text (i.e. it's scanned images)."""
+    ext = os.path.splitext(filename or "")[1].lower()
+    if ext == ".pdf":
+        return _pdf_to_text(data)
+    if ext == ".eml":
+        return _eml_to_text(data)
+    # .md / .markdown / .txt / anything else text-like
+    return data.decode("utf-8", errors="replace")
+
+
+def _pdf_to_text(data: bytes) -> str:
+    """Text from a PDF's text layer via pypdf (lazy import). Scanned/image-only PDFs
+    have no text layer → clear ValueError telling the user to screenshot the pages."""
+    from pypdf import PdfReader  # lazy: only needed on the PDF path
+
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        text = "\n".join((page.extract_text() or "") for page in reader.pages).strip()
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError(
+            f"Couldn't read this PDF ({type(e).__name__}). If it's a scanned/photo PDF, "
+            "screenshot the pages and upload those instead."
+        )
+    if not text:
+        raise ValueError(
+            "Couldn't read text from this PDF — it may be scanned images. "
+            "Screenshot the pages and upload those instead."
+        )
+    return text
+
+
+def _eml_to_text(data: bytes) -> str:
+    """Subject + body text from an .eml email (stdlib). Prefers the text/plain part;
+    falls back to lightly stripping a text/html part."""
+    import email
+    import html as html_mod
+    import re
+    from email import policy
+
+    msg = email.message_from_bytes(data, policy=policy.default)
+    subject = (msg.get("subject", "") or "").strip()
+    body = ""
+    try:
+        part = msg.get_body(preferencelist=("plain", "html"))
+        if part is not None:
+            content = part.get_content()
+            if part.get_content_subtype() == "html":
+                content = html_mod.unescape(re.sub(r"<[^>]+>", " ", content))
+            body = content
+    except Exception:
+        body = ""
+    if not body.strip():
+        body = data.decode("utf-8", errors="replace")  # best-effort fallback
+    parts = ([f"Subject: {subject}"] if subject else []) + [body]
+    return "\n\n".join(parts).strip()
 
 
 def extract_recipes_from_url(
@@ -393,18 +465,23 @@ if __name__ == "__main__":
     ap.add_argument("images", nargs="*", help="one or more image files (same recipe or several)")
     ap.add_argument("--url", default="", help="extract from a recipe-website or social/video URL instead of images")
     ap.add_argument("--text", default="", help="extract from pasted recipe text instead of an image/URL")
+    ap.add_argument("--file", default="", help="extract from a document file (.pdf/.md/.txt/.eml)")
     ap.add_argument("--prompt", default="", help='extra instructions, e.g. "no mushrooms"')
     ap.add_argument("--lang", default="English", help="output language (default: English)")
     args = ap.parse_args()
 
-    if not args.url and not args.images and not args.text:
-        ap.error("provide image file(s), --url, or --text")
+    if not args.url and not args.images and not args.text and not args.file:
+        ap.error("provide image file(s), --url, --text, or --file")
     try:
         if args.url:
             if is_video_url(args.url):
                 recipes = extract_recipes_from_video(args.url, user_note=args.prompt, target_language=args.lang)
             else:
                 recipes = extract_recipes_from_url(args.url, user_note=args.prompt, target_language=args.lang)
+        elif args.file:
+            with open(args.file, "rb") as fh:
+                doc_text = file_to_text(args.file, fh.read())
+            recipes = extract_recipes_from_text(doc_text, user_note=args.prompt, target_language=args.lang)
         elif args.text:
             recipes = extract_recipes_from_text(args.text, user_note=args.prompt, target_language=args.lang)
         else:

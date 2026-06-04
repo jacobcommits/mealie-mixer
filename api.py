@@ -32,6 +32,8 @@ from extract import (
     extract_recipes_from_text,
     extract_recipes_from_url,
     extract_recipes_from_video,
+    file_to_text,
+    is_document,
     is_video_url,
     test_ai,
 )
@@ -230,16 +232,35 @@ async def api_extract(
                     known_categories=known_categories,
                 )
         elif files:
+            # Split the batch: images → vision LLM; documents (pdf/md/txt/eml) →
+            # text pipeline (B6). A mixed batch uses the images (v1 doesn't combine).
+            image_paths: list[str] = []
+            doc_texts: list[str] = []
             for f in files:
-                suffix = os.path.splitext(f.filename or "img.jpg")[1] or ".jpg"
-                fd, path = tempfile.mkstemp(suffix=suffix, prefix="mm-api-")
-                with os.fdopen(fd, "wb") as out:
-                    out.write(await f.read())
-                tmp_paths.append(path)
-            recipes = extract_recipes(
-                tmp_paths, user_note=prompt, target_language=language,
-                known_categories=known_categories,
-            )
+                data = await f.read()
+                if is_document(f.filename or ""):
+                    doc_texts.append(file_to_text(f.filename or "", data))
+                else:
+                    suffix = os.path.splitext(f.filename or "img.jpg")[1] or ".jpg"
+                    fd, path = tempfile.mkstemp(suffix=suffix, prefix="mm-api-")
+                    with os.fdopen(fd, "wb") as out:
+                        out.write(data)
+                    tmp_paths.append(path)
+                    image_paths.append(path)
+            if image_paths:
+                recipes = extract_recipes(
+                    image_paths, user_note=prompt, target_language=language,
+                    known_categories=known_categories,
+                )
+            elif any(t.strip() for t in doc_texts):
+                recipes = extract_recipes_from_text(
+                    "\n\n".join(doc_texts), user_note=prompt, target_language=language,
+                    known_categories=known_categories,
+                )
+            else:
+                raise HTTPException(
+                    status_code=400, detail="No readable text found in the uploaded file(s).",
+                )
         elif text and text.strip():
             recipes = extract_recipes_from_text(
                 text.strip(), user_note=prompt, target_language=language,
