@@ -25,26 +25,29 @@ JOBS: dict[str, dict] = {}        # in-memory live state (the structuring thread
 _LOCK = threading.Lock()
 
 
-def _jobs_dir() -> str:
-    return os.path.join(config.DATA_DIR, "cookbook")
+def _jobs_dir(kind: str = "cookbook") -> str:
+    # Jobs live under /data/<kind> so the different kinds (cookbook batch, audio note)
+    # don't share a directory — list_jobs() scans only "cookbook" for the review banner.
+    return os.path.join(config.DATA_DIR, kind)
 
 
-def _job_path(job_id: str) -> str:
-    return os.path.join(_jobs_dir(), f"job-{job_id}.json")
+def _job_path(job_id: str, kind: str = "cookbook") -> str:
+    return os.path.join(_jobs_dir(kind), f"job-{job_id}.json")
 
 
 def _flush(job: dict) -> None:
-    """Persist a job to disk (atomic). Called only from the owning structuring thread."""
-    os.makedirs(_jobs_dir(), exist_ok=True)
-    tmp = _job_path(job["id"]) + ".tmp"
+    """Persist a job to disk (atomic). Called only from the owning worker thread."""
+    kind = job.get("kind", "cookbook")
+    os.makedirs(_jobs_dir(kind), exist_ok=True)
+    tmp = _job_path(job["id"], kind) + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(job, f)
-    os.replace(tmp, _job_path(job["id"]))
+    os.replace(tmp, _job_path(job["id"], kind))
 
 
-def _load(job_id: str) -> dict | None:
+def _load(job_id: str, kind: str = "cookbook") -> dict | None:
     try:
-        with open(_job_path(job_id), encoding="utf-8") as f:
+        with open(_job_path(job_id, kind), encoding="utf-8") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return None
@@ -132,3 +135,72 @@ def list_jobs(limit: int = 10) -> list[dict]:
         found.update(JOBS)   # in-memory is fresher
     ordered = sorted(found.values(), key=lambda j: j.get("created_at", ""), reverse=True)[:limit]
     return [{k: j.get(k) for k in SUMMARY_KEYS} for j in ordered]
+
+
+# ── voice-note transcription jobs (B3) ──────────────────────────────────────
+# Whisper is slow — especially the first run, which downloads the model to /data — so a
+# voice note transcribes in a background thread and the browser polls get_job(), rather
+# than blocking the /api/extract request (which would just spin / time out).
+
+def _extract_audio_default(audio_path, user_note, language, known_categories, progress):
+    from extract import extract_recipes_from_audio
+    return extract_recipes_from_audio(
+        audio_path, user_note=user_note, target_language=language,
+        known_categories=known_categories, progress=progress,
+    )
+
+
+def _process_audio_job(job, audio_path, language, user_note, known_categories,
+                       extract_fn=None) -> dict:
+    """Transcribe + structure one voice note. Mutates `job` in place (status/phase/progress)
+    and always removes the temp audio file. `extract_fn(path, note, lang, cats, progress)`
+    is injectable for tests."""
+    extract_fn = extract_fn or _extract_audio_default
+
+    def on_progress(frac):
+        with _LOCK:
+            job["progress"] = round(float(frac), 3)
+            if frac >= 0.999 and job["phase"] == "transcribing":
+                job["phase"] = "structuring"   # transcript's in; one LLM call to go
+
+    try:
+        recs = extract_fn(audio_path, user_note, language, known_categories, on_progress) or []
+        with _LOCK:
+            for rec in recs:
+                job["recipes"].append({"recipe": rec, "image": None})
+            job["done"] = 1
+            job["progress"] = 1.0
+            job["phase"] = "done"
+            job["status"] = "done"
+    except Exception as e:
+        with _LOCK:
+            job["status"] = "error"
+            job["failed"] = 1
+            job["error"] = str(e)
+    finally:
+        try:
+            os.remove(audio_path)
+        except OSError:
+            pass
+        _flush(job)
+    return job
+
+
+def start_audio_job(audio_path: str, language: str = "English", user_note: str = "",
+                    known_categories=()) -> str:
+    """Kick off a transcription job in a daemon thread; returns the id the browser polls."""
+    job_id = uuid.uuid4().hex[:12]
+    job = {
+        "id": job_id, "kind": "audio", "status": "running", "phase": "transcribing",
+        "progress": 0.0, "total": 1, "done": 0, "failed": 0, "recipes": [],
+        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    with _LOCK:
+        JOBS[job_id] = job
+    _flush(job)
+    threading.Thread(
+        target=_process_audio_job,
+        args=(job, audio_path, language, user_note, list(known_categories)),
+        daemon=True,
+    ).start()
+    return job_id

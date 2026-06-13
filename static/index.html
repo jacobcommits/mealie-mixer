@@ -82,6 +82,14 @@
         <button class="btn ghost sm" @click="genKey()">🎲 Generate key</button>
         <small class="mono" x-show="genKeyMsg" x-text="genKeyMsg"></small>
 
+        <template x-if="view === 'settings'">
+          <div>
+            <h3>Voice notes</h3>
+            <small class="ok" x-show="cfgInfo.voice">🎤 Enabled in this build — record or upload a voice note on the import screen.</small>
+            <small class="muted small" x-show="!cfgInfo.voice">Not included in this build (it pulls in a large local transcription model). To turn it on, rebuild the image with <span class="mono">WITH_VOICE=1</span> — e.g. <span class="mono">WITH_VOICE=1 docker compose build</span> (Docker), or <span class="mono">--build-arg WITH_VOICE=1</span> (Podman). The 🎤 controls appear automatically once it's built in.</small>
+          </div>
+        </template>
+
         <button class="btn primary" :disabled="loading" @click="saveConfig()"
                 x-text="view === 'setup' ? 'Save & start' : 'Save settings'"></button>
         <p class="muted small" x-show="cfgMsg" x-text="cfgMsg"></p>
@@ -112,13 +120,30 @@
         <small class="muted small" x-show="socialUrl()">ℹ We'll read the post's caption. If the recipe is only spoken/shown in the video (not written in the caption), screenshot the post and share the image instead.</small>
         <div class="or">— or —</div>
         <textarea class="input" rows="4" placeholder="…or paste recipe text" x-model="pastedText"></textarea>
+        <template x-if="cfgInfo.voice">
+          <div class="voicebox">
+            <div class="or">— or —</div>
+            <div class="row">
+              <button type="button" class="btn ghost" :class="{ recpulse: recording }" @click="toggleRecord()"
+                      x-text="recording ? ('⏹ Stop · ' + recClock()) : '🎤 Record a voice note'"></button>
+              <label class="btn ghost filebtn">📁 Upload audio
+                <input type="file" accept="audio/*" @change="pickAudio($event)" />
+              </label>
+            </div>
+            <div class="audiorow" x-show="audioBlob && !recording">
+              <audio class="audioprev" :src="audioUrl" controls></audio>
+              <button type="button" class="x" @click="clearAudio()" title="remove">✕</button>
+            </div>
+            <small class="muted small">Read the recipe aloud — ingredients with their amounts, then the steps.</small>
+          </div>
+        </template>
         <div class="row">
           <select class="input" x-model="language">
             <template x-for="l in languages" :key="l"><option x-text="l"></option></template>
           </select>
           <input class="input" type="text" placeholder="extra note (optional)" x-model="prompt" />
         </div>
-        <button class="btn primary" :disabled="loading || (!fileList?.length && !url.trim() && !pastedText.trim())"
+        <button class="btn primary" :disabled="loading || (!fileList?.length && !url.trim() && !pastedText.trim() && !audioBlob)"
                 @click="extract()">Extract recipe</button>
         <p class="err" x-show="error" x-text="error"></p>
       </div>
@@ -390,6 +415,9 @@
 
   <div class="overlay" x-show="loading" x-transition.opacity x-cloak>
     <div class="spinner big"></div><p x-text="loadingMsg"></p>
+    <div class="cbbar" x-show="audioProgress > 0" x-cloak style="max-width:240px">
+      <div class="cbbar-fill" :style="'width:' + Math.round(audioProgress * 100) + '%'"></div>
+    </div>
   </div>
   <div class="toast" x-show="toast" x-text="toast" x-transition></div>
 

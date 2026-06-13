@@ -1,6 +1,11 @@
 services:
   mealie-mixer:
-    build: .
+    build:
+      context: .
+      args:
+        # Voice notes (B3) are off by default to keep the image lean. To include them:
+        #   WITH_VOICE=1 docker compose build && docker compose up -d
+        WITH_VOICE: ${WITH_VOICE:-0}
     container_name: mealie-mixer
     # Config can come from a .env here OR from the in-app setup page (which
     # persists to the /data volume below). The .env is optional — without one,

@@ -130,6 +130,15 @@ small{font-size:.8rem;line-height:1.4}
 .badge{font-size:.66rem;border-radius:6px;padding:1px 6px;border:1px solid var(--border);white-space:nowrap}
 .badge.dup{color:#fbbf24;border-color:#fbbf24}
 .badge.near{color:var(--accent2);border-color:var(--accent2)}
+/* voice note (B3) */
+.voicebox{display:flex;flex-direction:column;gap:8px}
+.filebtn{cursor:pointer}
+.filebtn input{display:none}
+.recpulse{border-color:var(--danger)!important;color:var(--danger)!important;animation:recpulse 1s ease-in-out infinite}
+@keyframes recpulse{50%{opacity:.5}}
+.audiorow{display:flex;align-items:center;gap:8px}
+.audioprev{flex:1;height:36px}
+.audiorow .x{background:transparent;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer}
 .histmeta{display:flex;gap:8px;align-items:baseline;flex:none;color:var(--muted);font-size:.78rem}
 .histsrc{color:var(--muted);opacity:.8}
 .histname.histdiscarded{color:var(--muted);text-decoration:line-through;cursor:default}

@@ -95,6 +95,20 @@ podman run -d --name mealie-mixer \
 
 Open **http://localhost:7860** (or the host's LAN IP). Config comes from your `.env` if present, otherwise from the in-app setup page (persisted to the `/data` volume).
 
+#### Optional: voice notes (dictation)
+
+Voice-note transcription (faster-whisper, runs locally) is **off by default** to keep the image lean (~130 MB of extra wheels). The app hides the 🎤 controls automatically when it's not built in. To enable it, build with `WITH_VOICE=1`:
+
+```bash
+# Docker Compose
+WITH_VOICE=1 docker compose build && docker compose up -d
+
+# Podman
+podman build --format docker --build-arg WITH_VOICE=1 -t mealie-mixer .
+```
+
+The Whisper model (size set by `WHISPER_MODEL`, default `base`) downloads to the `/data` volume on first use — the review screen shows a progress bar while it transcribes.
+
 ### Run locally
 
 ```bash

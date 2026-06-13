@@ -252,6 +252,30 @@ def _eml_to_text(data: bytes) -> str:
     return "\n\n".join(parts).strip()
 
 
+def extract_recipes_from_audio(
+    audio_path: str,
+    user_note: str = "",
+    target_language: str = "English",
+    known_categories=(),
+    progress=None,
+) -> list[dict]:
+    """Transcribe a voice note / dictation locally (faster-whisper), then structure the
+    transcript through the SAME text pipeline. Handy for reading a recipe card aloud.
+    `progress` (0..1 callback) is forwarded to the transcriber for the UI progress bar.
+    Raises RuntimeError if transcription isn't enabled in this build."""
+    import transcribe
+
+    text = transcribe.transcribe_audio(audio_path, progress=progress)
+    if not text.strip():
+        raise ValueError(
+            "Couldn't make out any speech in that audio — try again, a bit closer to the mic."
+        )
+    return extract_recipes_from_text(
+        text, user_note=user_note, target_language=target_language,
+        known_categories=known_categories,
+    )
+
+
 def extract_recipes_from_url(
     url: str,
     user_note: str = "",
@@ -492,18 +516,21 @@ if __name__ == "__main__":
     ap.add_argument("--url", default="", help="extract from a recipe-website or social/video URL instead of images")
     ap.add_argument("--text", default="", help="extract from pasted recipe text instead of an image/URL")
     ap.add_argument("--file", default="", help="extract from a document file (.pdf/.md/.txt/.eml)")
+    ap.add_argument("--audio", default="", help="extract from a voice note / audio file (faster-whisper)")
     ap.add_argument("--prompt", default="", help='extra instructions, e.g. "no mushrooms"')
     ap.add_argument("--lang", default="English", help="output language (default: English)")
     args = ap.parse_args()
 
-    if not args.url and not args.images and not args.text and not args.file:
-        ap.error("provide image file(s), --url, --text, or --file")
+    if not args.url and not args.images and not args.text and not args.file and not args.audio:
+        ap.error("provide image file(s), --url, --text, --file, or --audio")
     try:
         if args.url:
             if is_video_url(args.url):
                 recipes = extract_recipes_from_video(args.url, user_note=args.prompt, target_language=args.lang)
             else:
                 recipes = extract_recipes_from_url(args.url, user_note=args.prompt, target_language=args.lang)
+        elif args.audio:
+            recipes = extract_recipes_from_audio(args.audio, user_note=args.prompt, target_language=args.lang)
         elif args.file:
             with open(args.file, "rb") as fh:
                 doc_text = file_to_text(args.file, fh.read())

@@ -3,7 +3,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
+import api
 import config
+import jobs
+import transcribe
 from app import fastapi_app
 
 client = TestClient(fastapi_app)
@@ -82,3 +85,50 @@ class TestPushEndpoint:
         payload = {"name": "Test", "yield": "", "ingredients": [], "instructions": []}
         response = client.post("/api/push", json=payload, headers={"Authorization": "Bearer wrong"})
         assert response.status_code == 401
+
+
+class TestAudioJobEndpoints:
+    def test_audio_start_missing_auth(self, monkeypatch, tmp_path):
+        _isolate(monkeypatch, tmp_path, {
+            "MEALIE_URL": "http://m:9925", "MEALIE_TOKEN": "t", "AI_API_KEY": "k", "MIXER_API_KEY": "secret"
+        })
+        # no session, no key → fail-closed, before any whisper work
+        assert client.post("/api/extract/audio").status_code == 401
+
+    def test_audio_start_returns_job_id(self, monkeypatch, tmp_path):
+        _isolate(monkeypatch, tmp_path, {
+            "MEALIE_URL": "http://m:9925", "MEALIE_TOKEN": "t", "AI_API_KEY": "k"
+        })
+        monkeypatch.setattr(transcribe, "is_available", lambda: True)
+        monkeypatch.setattr(api, "fetch_category_names", lambda: [])
+        monkeypatch.setattr(jobs, "start_audio_job", lambda *a, **k: "JID123")
+        c = TestClient(fastapi_app)
+        c.post("/api/login", json={})        # no login required → mints an open session
+        r = c.post("/api/extract/audio",
+                   files={"audio": ("note.webm", b"xx", "audio/webm")},
+                   data={"language": "English"})
+        assert r.status_code == 200 and r.json()["job_id"] == "JID123"
+
+    def test_audio_start_disabled_when_dep_missing(self, monkeypatch, tmp_path):
+        _isolate(monkeypatch, tmp_path, {
+            "MEALIE_URL": "http://m:9925", "MEALIE_TOKEN": "t", "AI_API_KEY": "k"
+        })
+        monkeypatch.setattr(transcribe, "is_available", lambda: False)
+        c = TestClient(fastapi_app)
+        c.post("/api/login", json={})
+        r = c.post("/api/extract/audio",
+                   files={"audio": ("note.webm", b"xx", "audio/webm")})
+        assert r.status_code == 503
+
+    def test_audio_status_returns_job_and_404(self, monkeypatch, tmp_path):
+        _isolate(monkeypatch, tmp_path, {
+            "MEALIE_URL": "http://m:9925", "MEALIE_TOKEN": "t", "AI_API_KEY": "k"
+        })
+        done = {"id": "abc", "status": "done", "progress": 1.0,
+                "recipes": [{"recipe": {"name": "Cake"}, "image": None}]}
+        monkeypatch.setattr(jobs, "get_job", lambda jid: done if jid == "abc" else None)
+        c = TestClient(fastapi_app)
+        c.post("/api/login", json={})
+        r = c.get("/api/extract/audio/abc")
+        assert r.status_code == 200 and r.json()["recipes"][0]["recipe"]["name"] == "Cake"
+        assert c.get("/api/extract/audio/missing").status_code == 404

@@ -29,8 +29,10 @@ import cookbook
 import core
 import history
 import jobs
+import transcribe
 from extract import (
     extract_recipes,
+    extract_recipes_from_audio,
     extract_recipes_from_text,
     extract_recipes_from_url,
     extract_recipes_from_video,
@@ -204,6 +206,7 @@ async def api_extract(
     files: list[UploadFile] | None = File(None),
     url: str | None = Form(None),
     text: str | None = Form(None),
+    audio: UploadFile | None = File(None),
     language: str = Form("English"),
     prompt: str = Form(""),
 ):
@@ -264,6 +267,16 @@ async def api_extract(
                 raise HTTPException(
                     status_code=400, detail="No readable text found in the uploaded file(s).",
                 )
+        elif audio is not None:
+            suffix = os.path.splitext(audio.filename or "note.webm")[1] or ".webm"
+            fd, path = tempfile.mkstemp(suffix=suffix, prefix="mm-audio-")
+            with os.fdopen(fd, "wb") as out:
+                out.write(await audio.read())
+            tmp_paths.append(path)
+            recipes = extract_recipes_from_audio(   # faster-whisper → text pipeline (B3)
+                path, user_note=prompt, target_language=language,
+                known_categories=known_categories,
+            )
         elif text and text.strip():
             recipes = extract_recipes_from_text(
                 text.strip(), user_note=prompt, target_language=language,
@@ -272,7 +285,7 @@ async def api_extract(
         else:
             raise HTTPException(
                 status_code=400,
-                detail="Provide image file(s), a 'url', or 'text'.",
+                detail="Provide image file(s), a 'url', 'text', or a voice note ('audio').",
             )
     except HTTPException:
         raise
@@ -292,6 +305,45 @@ async def api_extract(
     return ExtractResponse(
         recipes=[Recipe.model_validate(r) for r in recipes],
     )
+
+
+@router.post("/extract/audio", dependencies=[Depends(require_access)])
+async def api_extract_audio(
+    audio: UploadFile = File(...),
+    language: str = Form("English"),
+    prompt: str = Form(""),
+):
+    """Start a background transcription job for a voice note (B3). Whisper is slow —
+    especially the first run, which downloads the model — so this returns a ``job_id`` the
+    browser polls via ``GET /api/extract/audio/{job_id}`` instead of blocking the request.
+    (Agents/CLI can still use the synchronous ``audio`` branch of /api/extract.)"""
+    if not transcribe.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="Voice transcription isn't enabled in this build.",
+        )
+    try:
+        known_categories = fetch_category_names()
+    except Exception:
+        known_categories = []
+    suffix = os.path.splitext(audio.filename or "note.webm")[1] or ".webm"
+    fd, path = tempfile.mkstemp(suffix=suffix, prefix="mm-audio-")
+    with os.fdopen(fd, "wb") as out:
+        out.write(await audio.read())
+    # start_audio_job owns the temp file from here — it removes it when the job finishes.
+    job_id = jobs.start_audio_job(
+        path, language=language, user_note=prompt, known_categories=known_categories,
+    )
+    return {"job_id": job_id}
+
+
+@router.get("/extract/audio/{job_id}", dependencies=[Depends(require_access)])
+def api_extract_audio_status(job_id: str):
+    """Status + (when done) structured recipes for a voice-note transcription job."""
+    job = jobs.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return job
 
 
 @router.post(
@@ -364,6 +416,7 @@ def api_get_config(request: Request):
         "configured": config.is_configured(),
         "login_required": bool(config.get("MIXER_AUTH_USER")),
         "authed": authed,
+        "voice": transcribe.is_available(),   # is the voice-note feature usable in this build?
     }
     if authed:
         out.update({

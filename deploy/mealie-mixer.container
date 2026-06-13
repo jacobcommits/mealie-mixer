@@ -5,6 +5,7 @@
 #
 # Podman setup (rootless):
 #   1. Build the image:   podman build --format docker -t mealie-mixer /path/to/repo
+#      (add --build-arg WITH_VOICE=1 to include optional voice-note transcription)
 #   2. Install this unit:  cp mealie-mixer.container ~/.config/containers/systemd/
 #   3. Allow user services at boot:  loginctl enable-linger "$USER"
 #   4. Load + start:       systemctl --user daemon-reload && systemctl --user start mealie-mixer

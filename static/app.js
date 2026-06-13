@@ -19,6 +19,7 @@ function mixer() {
     genKeyMsg: '', cfgMsg: '',
     // recipe input
     fileList: null, url: '', pastedText: '', language: 'English', prompt: '',
+    recording: false, audioBlob: null, audioUrl: '', recElapsed: 0, audioProgress: 0,   // voice note (B3)
     // review
     recipe: emptyRecipe(), instructionsText: '', queue: [],
     photoFile: null, photoPreview: '', categoryInput: '',
@@ -158,7 +159,9 @@ function mixer() {
 
     // ── recipe flow ─────────────────────────────────────────────────────
     async extract() {
-      this.error = ''; this.loadingMsg = 'Reading your recipe…'; this.loading = true;
+      this.error = '';
+      if (this.audioBlob) { return this.extractAudio(); }   // voice notes go async (B3) — whisper is slow
+      this.loadingMsg = 'Reading your recipe…'; this.loading = true;
       try { localStorage.setItem('mm-lang', this.language); } catch (_) {}   // remember for next time / share flow
       this.clearSourceImages();
       if (this.fileList && this.fileList.length) this.sourceImages = [...this.fileList].filter(f => (f.type || '').startsWith('image/')).map(f => URL.createObjectURL(f));
@@ -176,6 +179,75 @@ function mixer() {
       } catch (e) { this.error = String(e.message || e); }
       finally { this.loading = false; }
     },
+    // Voice notes transcribe server-side (whisper is slow, esp. the first-run model
+    // download), so we start a job and poll it rather than block on one long request.
+    async extractAudio() {
+      this.error = ''; this.audioProgress = 0;
+      this.loadingMsg = 'Transcribing your voice note…'; this.loading = true;
+      try { localStorage.setItem('mm-lang', this.language); } catch (_) {}
+      try {
+        const fd = new FormData();
+        fd.append('audio', this.audioBlob, 'note.webm');
+        fd.append('language', this.language); fd.append('prompt', this.prompt || '');
+        const r = await fetch('/api/extract/audio', { method: 'POST', body: fd, credentials: 'same-origin' });
+        if (!r.ok) throw new Error(await detail(r));
+        this._audioJob = (await r.json()).job_id;
+        this.audioPoll();
+      } catch (e) { this.error = String(e.message || e); this.loading = false; }
+    },
+    async audioPoll() {
+      const jid = this._audioJob; if (!jid) return;
+      let job;
+      try { job = await getJSON('/api/extract/audio/' + jid); }
+      catch (e) { this.error = String(e.message || e); this.loading = false; this._audioJob = null; return; }
+      this.audioProgress = job.progress || 0;
+      this.loadingMsg = job.phase === 'structuring'
+        ? 'Structuring the recipe…'
+        : ('Transcribing your voice note… ' + Math.round((job.progress || 0) * 100) + '%');
+      if (job.status === 'done') {
+        this.loading = false; this.audioProgress = 0; this._audioJob = null;
+        const recipes = (job.recipes || []).map(x => x.recipe);
+        if (!recipes.length) { this.error = 'No recipe found — try dictating the whole recipe, amounts and all.'; return; }
+        this.queue = recipes.slice(1); this.loadRecipe(recipes[0]); this.view = 'review';
+        return;
+      }
+      if (job.status === 'error') {
+        this.loading = false; this.audioProgress = 0; this._audioJob = null;
+        this.error = job.error || 'Transcription failed.'; return;
+      }
+      this._audioTimer = setTimeout(() => this.audioPoll(), 1500);
+    },
+    // ── voice note (B3) ──────────────────────────────────────────────────
+    async toggleRecord() {
+      if (this.recording) { try { this._rec && this._rec.stop(); } catch (_) {} return; }
+      this.error = '';
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const rec = new MediaRecorder(stream);
+        const chunks = [];
+        rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+        rec.onstop = () => {
+          stream.getTracks().forEach(t => t.stop());
+          clearInterval(this._recTimer); this.recording = false;
+          this.clearAudio();
+          this.audioBlob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
+          this.audioUrl = URL.createObjectURL(this.audioBlob);
+        };
+        this._rec = rec; rec.start();
+        this.recording = true; this.recElapsed = 0;
+        const t0 = Date.now();
+        this._recTimer = setInterval(() => this.recElapsed = Math.floor((Date.now() - t0) / 1000), 250);
+      } catch (_) { this.error = 'Microphone unavailable or permission denied.'; }
+    },
+    pickAudio(e) {
+      const f = e.target.files && e.target.files[0]; e.target.value = '';
+      if (f) { this.clearAudio(); this.audioBlob = f; this.audioUrl = URL.createObjectURL(f); }
+    },
+    clearAudio() {
+      if (this.audioUrl) { try { URL.revokeObjectURL(this.audioUrl); } catch (_) {} }
+      this.audioBlob = null; this.audioUrl = ''; this.recElapsed = 0;
+    },
+    recClock() { const s = this.recElapsed; return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); },
     pickPhoto(e) {
       const f = e.target.files && e.target.files[0];
       this.clearPhoto();
@@ -358,7 +430,7 @@ function mixer() {
     },
     reset() {
       this.fileList = null; this.url = ''; this.pastedText = ''; this.prompt = ''; this.error = '';
-      this.clearPhoto(); this.clearSourceImages(); this.zoomSrc = ''; this.dupModal = false; this.clearSession();
+      this.clearPhoto(); this.clearAudio(); this.clearSourceImages(); this.zoomSrc = ''; this.dupModal = false; this.clearSession();
       this.recipe = emptyRecipe(); this.instructionsText = ''; this.queue = []; this.view = 'input';
     },
     showToast(m) { this.toast = m; clearTimeout(this._t); this._t = setTimeout(() => this.toast = '', 2600); },

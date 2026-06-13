@@ -1,0 +1,5 @@
+# Optional voice-note transcription (B3) — local faster-whisper.
+# Heavy (~100-150 MB of wheels; the Whisper model downloads to /data at runtime).
+# Built into the dev image for now; before prod this should move to an optional
+# compose profile / mealie-mixer-voice image so the lean base image stays lean.
+faster-whisper==1.2.1
