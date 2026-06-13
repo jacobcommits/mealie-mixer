@@ -17,7 +17,7 @@
 
   <header class="topbar">
     <button class="brand brandbtn" @click="goHome()" title="Home"><img src="/icons/brand.png" class="brandlogo" alt="" />Mealie&nbsp;Mixer</button>
-    <button class="iconbtn" x-show="['input','review','done','history','settings','cookbook-upload','cookbook','cookbook-progress','cookbook-review'].includes(view)"
+    <button class="iconbtn" x-show="['input','review','done','history','settings','cookbook-upload','cookbook','cookbook-progress','cookbook-review','fix'].includes(view)"
             @click="menuOpen = true" title="Menu">☰</button>
   </header>
 
@@ -231,7 +231,35 @@
           </template>
         </div>
         <button class="btn ghost" @click="addNote()">+ add note</button>
+        <small class="warn" x-show="updateMode">⚠ This will overwrite the existing recipe in Mealie. Review carefully before saving.</small>
         <p class="err" x-show="error" x-text="error"></p>
+      </div>
+    </template>
+
+    <!-- fix existing recipe (B9) -->
+    <template x-if="view === 'fix'">
+      <div class="card">
+        <h2>🔧 Fix existing recipe</h2>
+        <p class="muted small">Pick a recipe from Mealie — the AI will clean up its ingredients, translate, convert to metric, and re-structure it. You'll review before saving.</p>
+        <input class="input" type="text" placeholder="🔍 Search recipes…" x-model="fixSearch" />
+        <div class="fixlist">
+          <template x-for="(r, i) in fixFiltered()" :key="r.slug">
+            <button class="fixrow" @click="restandardize(r.slug)">
+              <span class="fixname" x-text="r.name"></span>
+              <span class="fixarrow">→</span>
+            </button>
+          </template>
+          <p class="muted small" x-show="!fixFiltered().length && fixSearch.trim()">No recipes match.</p>
+          <p class="muted small" x-show="!mealieRecipes.length">No recipes in Mealie yet.</p>
+        </div>
+        <div class="row">
+          <select class="input" x-model="language" style="max-width: 160px">
+            <template x-for="l in languages" :key="l"><option x-text="l"></option></template>
+          </select>
+          <small class="muted">Output language</small>
+        </div>
+        <p class="err" x-show="error" x-text="error"></p>
+        <button class="btn ghost" @click="view = 'input'">← Back</button>
       </div>
     </template>
 
@@ -394,8 +422,10 @@
   </main>
 
   <footer class="actionbar" x-show="view === 'review'">
-    <button class="btn ghost" x-show="cbEditIndex === null" @click="discard()" x-text="queue.length ? 'Discard this' : 'Discard'"></button>
-    <button class="btn primary" x-show="cbEditIndex === null" :disabled="loading" @click="push()">✅ Approve &amp; push</button>
+    <button class="btn ghost" x-show="cbEditIndex === null && !updateMode" @click="discard()" x-text="queue.length ? 'Discard this' : 'Discard'"></button>
+    <button class="btn primary" x-show="cbEditIndex === null && !updateMode" :disabled="loading" @click="push()">✅ Approve &amp; push</button>
+    <button class="btn ghost" x-show="updateMode && cbEditIndex === null" @click="updateMode = null; view = 'fix'">← Cancel</button>
+    <button class="btn primary" x-show="updateMode && cbEditIndex === null" :disabled="loading" @click="push()">💾 Save changes</button>
     <button class="btn ghost" x-show="cbEditIndex !== null" @click="cbCancelEdit()">← Discard edits</button>
     <button class="btn primary" x-show="cbEditIndex !== null" @click="cbSaveEdit()">Save &amp; back</button>
   </footer>
@@ -407,6 +437,7 @@
       <span class="brand">🍲&nbsp;Menu</span>
       <button class="iconbtn" @click="menuOpen = false" title="Close">✕</button>
     </div>
+    <button class="drawer-item" @click="openFix()">🔧 <span>Fix existing recipe</span></button>
     <button class="drawer-item" @click="openCookbook()">📚 <span>Cookbook import</span>
       <span class="menudot" x-show="cookbookJob" x-cloak x-text="cookbookJob && cookbookJob.status === 'done' ? 'ready' : 'running'"></span></button>
     <button class="drawer-item" @click="openHistory()">🕘 <span>Import history</span></button>

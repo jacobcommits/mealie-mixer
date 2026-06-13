@@ -123,6 +123,120 @@ def fetch_recipe_names() -> list[str]:
         return sorted({it["name"] for it in r.json().get("items", []) if it.get("name")})
 
 
+def fetch_recipes() -> list[dict]:
+    """All Mealie recipes as [{slug, name}], sorted by name. Powers the
+    B9 'fix existing recipe' browse list."""
+    url, token = _mealie()
+    if not (url and token):
+        return []
+    with httpx.Client(
+        base_url=url, headers={"Authorization": f"Bearer {token}"}, timeout=30
+    ) as client:
+        r = client.get("/api/recipes", params={"perPage": -1})
+        r.raise_for_status()
+        items = r.json().get("items", [])
+        return sorted(
+            [{"slug": it["slug"], "name": it["name"]} for it in items if it.get("slug") and it.get("name")],
+            key=lambda x: x["name"].lower(),
+        )
+
+
+def fetch_recipe(slug: str) -> dict:
+    """GET /api/recipes/{slug} — full Mealie recipe JSON. Used by B9 to
+    read an existing recipe before re-standardizing it."""
+    url, token = _mealie()
+    if not url or not token:
+        raise RuntimeError("Mealie is not configured.")
+    with httpx.Client(
+        base_url=url, headers={"Authorization": f"Bearer {token}"}, timeout=30
+    ) as client:
+        r = client.get(f"/api/recipes/{slug}")
+        r.raise_for_status()
+        return r.json()
+
+
+def recipe_to_text(mealie_recipe: dict) -> str:
+    """Render a Mealie recipe JSON into a plain-text blob the LLM can
+    re-structure. Extracts name, ingredient display strings, instruction
+    texts, and existing category names."""
+    parts: list[str] = []
+
+    name = mealie_recipe.get("name") or ""
+    if name:
+        parts.append(f"Name: {name}")
+
+    desc = mealie_recipe.get("description") or ""
+    if desc:
+        parts.append(f"Description: {desc}")
+
+    servings = mealie_recipe.get("recipeServings")
+    yield_str = mealie_recipe.get("recipeYield") or ""
+    if servings or yield_str:
+        parts.append(f"Servings: {servings or '?'}{(' · ' + yield_str) if yield_str else ''}")
+
+    # Ingredients: prefer the display string (human-readable, present on
+    # scraper-imported recipes). Fall back to structured food/unit/quantity.
+    ings = mealie_recipe.get("recipeIngredient") or []
+    if ings:
+        ing_lines: list[str] = []
+        for ing in ings:
+            display = (ing.get("display") or "").strip()
+            if display:
+                ing_lines.append(display)
+            else:
+                # Build from structured fields
+                p: list[str] = []
+                q = ing.get("quantity")
+                if q is not None and q != 0:
+                    p.append(_fmt_quantity(q))
+                u = ing.get("unit")
+                if isinstance(u, dict):
+                    u = u.get("name") or ""
+                if u:
+                    p.append(str(u))
+                f = ing.get("food")
+                if isinstance(f, dict):
+                    f = f.get("name") or ""
+                if f:
+                    p.append(str(f))
+                note = (ing.get("note") or "").strip()
+                line = " ".join(p)
+                if note:
+                    line = f"{line}, {note}" if line else note
+                if line.strip():
+                    ing_lines.append(line.strip())
+        if ing_lines:
+            parts.append("Ingredients:\n" + "\n".join(ing_lines))
+
+    # Instructions
+    steps = mealie_recipe.get("recipeInstructions") or []
+    if steps:
+        step_texts = [s.get("text", "") for s in steps if s.get("text")]
+        if step_texts:
+            parts.append("Instructions:\n" + "\n".join(step_texts))
+
+    # Categories
+    cats = mealie_recipe.get("recipeCategory") or []
+    if cats:
+        cat_names = [c.get("name") or c for c in cats if (c.get("name") if isinstance(c, dict) else c)]
+        if cat_names:
+            parts.append("Categories: " + ", ".join(cat_names))
+
+    # Notes
+    notes = mealie_recipe.get("notes") or []
+    if notes:
+        note_lines = []
+        for n in notes:
+            title = (n.get("title") or "").strip()
+            text = (n.get("text") or "").strip()
+            if text:
+                note_lines.append(f"{title}: {text}" if title else text)
+        if note_lines:
+            parts.append("Notes:\n" + "\n".join(note_lines))
+
+    return "\n\n".join(parts)
+
+
 def test_mealie(url: str, token: str) -> tuple[bool, str]:
     """Check a Mealie URL + token by hitting /api/users/self. Returns
     (ok, message). Used by the setup/settings page's Test button."""
@@ -207,6 +321,97 @@ def build_structured_ingredients(client: httpx.Client, recipe: dict) -> list[dic
     return out
 
 
+def _patch_fields(client: httpx.Client, slug: str, recipe: dict, structured: bool = True) -> None:
+    """PATCH an existing Mealie recipe's editable fields — one PATCH per field
+    (Mealie landmine: combining fields causes vague 400s). Shared by both
+    push_recipe (new) and update_recipe (existing). Does NOT create or delete
+    the recipe shell — the caller owns that."""
+
+    # Description
+    if recipe.get("description"):
+        r = client.patch(f"/api/recipes/{slug}", json={"description": recipe["description"]})
+        r.raise_for_status()
+
+    # Servings + yield
+    yield_patch = {}
+    if recipe.get("servings") is not None:
+        yield_patch["recipeServings"] = recipe["servings"]
+    if recipe.get("yield"):
+        yield_patch["recipeYield"] = recipe["yield"]
+    if yield_patch:
+        r = client.patch(f"/api/recipes/{slug}", json=yield_patch)
+        r.raise_for_status()
+
+    # Ingredients
+    if structured:
+        ingredients = build_structured_ingredients(client, recipe)
+    else:
+        ingredients = [
+            {
+                "note": ingredient_to_text(ing),
+                "quantity": None,
+                "unit": None,
+                "food": None,
+                "title": None,
+                "disableAmount": True,
+            }
+            for ing in recipe.get("ingredients", [])
+        ]
+    if ingredients:
+        r = client.patch(f"/api/recipes/{slug}", json={"recipeIngredient": ingredients})
+        r.raise_for_status()
+
+    # Instructions — each step needs the full object with a UUID v4 id.
+    instructions = [
+        {
+            "id": str(uuid.uuid4()),
+            "title": "",
+            "summary": "",
+            "text": step,
+            "ingredientReferences": [],
+        }
+        for step in recipe.get("instructions", [])
+    ]
+    if instructions:
+        r = client.patch(f"/api/recipes/{slug}", json={"recipeInstructions": instructions})
+        r.raise_for_status()
+
+    # Categories — resolve-or-create each name.
+    category_names = [c for c in (recipe.get("categories") or []) if c and str(c).strip()]
+    if category_names:
+        cat_lookup = _load_lookup(client, "/api/organizers/categories")
+        cat_objs = [
+            _resolve(client, "/api/organizers/categories", "category", name, cat_lookup)
+            for name in category_names
+        ]
+        r = client.patch(f"/api/recipes/{slug}", json={"recipeCategory": cat_objs})
+        r.raise_for_status()
+
+    # Notes
+    notes = [
+        {"title": str(n.get("title") or "").strip(), "text": str(n.get("text") or "").strip()}
+        for n in (recipe.get("notes") or [])
+        if str(n.get("text") or "").strip()
+    ]
+    if notes:
+        r = client.patch(f"/api/recipes/{slug}", json={"notes": notes})
+        r.raise_for_status()
+
+    # Source URL
+    if recipe.get("source_url"):
+        r = client.patch(f"/api/recipes/{slug}", json={"orgURL": recipe["source_url"]})
+        r.raise_for_status()
+
+    # Dish photo (URL imports): Mealie downloads from the URL. Non-fatal.
+    if recipe.get("image_url"):
+        try:
+            r = client.post(f"/api/recipes/{slug}/image", json={"url": recipe["image_url"]})
+            r.raise_for_status()
+            print("  + attached dish photo", file=sys.stderr)
+        except httpx.HTTPError as e:
+            print(f"  ! couldn't attach photo (recipe still saved): {e}", file=sys.stderr)
+
+
 def push_recipe(recipe: dict, client: httpx.Client | None = None, structured: bool = True) -> str:
     """Push one recipe dict to Mealie. Returns the created recipe's slug.
 
@@ -239,131 +444,65 @@ def push_recipe(recipe: dict, client: httpx.Client | None = None, structured: bo
         slug = r.json()
         print(f"  created -> {slug}", file=sys.stderr)
 
-        # 2. Description — its own PATCH (combining fields causes vague 400s).
-        if recipe.get("description"):
-            r = client.patch(
-                f"/api/recipes/{slug}",
-                json={"description": recipe["description"]},
-            )
-            r.raise_for_status()
-
-        # 2b. Servings + yield — the base Mealie scales from. Its own PATCH.
-        #     recipeServings is the numeric base; recipeYield is the readable
-        #     label. Human can adjust both in the review step.
-        yield_patch = {}
-        if recipe.get("servings") is not None:
-            yield_patch["recipeServings"] = recipe["servings"]
-        if recipe.get("yield"):
-            yield_patch["recipeYield"] = recipe["yield"]
-        if yield_patch:
-            r = client.patch(f"/api/recipes/{slug}", json=yield_patch)
-            r.raise_for_status()
-
-        # 3. Ingredients — its own PATCH.
-        if structured:
-            # Step 4: resolve/create foods + units, push real amounts so the
-            # recipe scales.
-            ingredients = build_structured_ingredients(client, recipe)
-        else:
-            # Step 3 fallback (--plain): flatten to plain strings, amounts off.
-            # disableAmount only renders verbatim at the recipe level, but with
-            # all amount fields null Mealie shows the note text anyway.
-            ingredients = [
-                {
-                    "note": ingredient_to_text(ing),
-                    "quantity": None,
-                    "unit": None,
-                    "food": None,
-                    "title": None,
-                    "disableAmount": True,
-                }
-                for ing in recipe.get("ingredients", [])
-            ]
-        if ingredients:
-            r = client.patch(
-                f"/api/recipes/{slug}",
-                json={"recipeIngredient": ingredients},
-            )
-            r.raise_for_status()
-
-        # 4. Instructions — its own PATCH.
-        #    LANDMINE: each step must be the FULL object with a unique UUID v4
-        #    id, or the PATCH 400s.
-        instructions = [
-            {
-                "id": str(uuid.uuid4()),
-                "title": "",
-                "summary": "",
-                "text": step,
-                "ingredientReferences": [],
-            }
-            for step in recipe.get("instructions", [])
-        ]
-        if instructions:
-            r = client.patch(
-                f"/api/recipes/{slug}",
-                json={"recipeInstructions": instructions},
-            )
-            r.raise_for_status()
-
-        # 5. Categories — its own PATCH. Unlike tags, recipeCategory PATCHes
-        #    cleanly (verified live). Resolve-or-create each name against
-        #    /api/organizers/categories — same pattern as foods/units.
-        category_names = [c for c in (recipe.get("categories") or []) if c and str(c).strip()]
-        if category_names:
-            cat_lookup = _load_lookup(client, "/api/organizers/categories")
-            cat_objs = [
-                _resolve(client, "/api/organizers/categories", "category", name, cat_lookup)
-                for name in category_names
-            ]
-            r = client.patch(f"/api/recipes/{slug}", json={"recipeCategory": cat_objs})
-            r.raise_for_status()
-
-        # 5b. Notes (useful culinary tips from URL/text imports) — its own PATCH.
-        #     Mealie's recipe `notes` is a list of {title, text}; send text always,
-        #     default title to "". _normalize already cleaned these; this filter is
-        #     the last-line guard (drop anything without text).
-        notes = [
-            {"title": str(n.get("title") or "").strip(), "text": str(n.get("text") or "").strip()}
-            for n in (recipe.get("notes") or [])
-            if str(n.get("text") or "").strip()
-        ]
-        if notes:
-            r = client.patch(f"/api/recipes/{slug}", json={"notes": notes})
-            r.raise_for_status()
-
-        # 6. Source URL (link imports) — its own PATCH. Mealie's field is orgURL;
-        #    records where the recipe came from so it links back.
-        if recipe.get("source_url"):
-            r = client.patch(f"/api/recipes/{slug}", json={"orgURL": recipe["source_url"]})
-            r.raise_for_status()
+        # 2–6. PATCH each field onto the shell.
+        _patch_fields(client, slug, recipe, structured=structured)
 
         # Tags intentionally skipped — see CLAUDE.md landmine.
-
-        # Dish photo (URL imports only): Mealie downloads it from the URL.
-        # Non-fatal — some hosts block hotlinking; the recipe still lands.
-        if recipe.get("image_url"):
-            try:
-                r = client.post(f"/api/recipes/{slug}/image", json={"url": recipe["image_url"]})
-                r.raise_for_status()
-                print("  + attached dish photo", file=sys.stderr)
-            except httpx.HTTPError as e:
-                print(f"  ! couldn't attach photo (recipe still saved): {e}", file=sys.stderr)
 
         finished = True
         print(f"  done -> {mealie_url}/g/home/r/{slug}", file=sys.stderr)
         return slug
     except Exception:
         # A failure mid-push leaves a half-created recipe (shell + some fields).
-        # Roll it back so a failed push leaves nothing behind. The dish-photo
-        # attach above is non-fatal (its own try), so a fully-built recipe that
-        # only failed the photo never reaches here.
+        # Roll it back so a failed push leaves nothing behind.
         if slug and not finished:
             print("  ! push failed — rolling back the partial recipe", file=sys.stderr)
             try:
                 client.delete(f"/api/recipes/{slug}")
             except Exception:
                 pass
+        raise
+    finally:
+        if owns_client:
+            client.close()
+
+
+def update_recipe(slug: str, recipe: dict, client: httpx.Client | None = None) -> str:
+    """Update an EXISTING Mealie recipe in place (B9 re-standardize). Returns
+    the slug. Uses the same _patch_fields logic as push_recipe but:
+    - does NOT create a new recipe shell (the recipe already exists)
+    - does NOT delete on failure (that would destroy the user's real recipe)
+    - patches only the fields the app models; untouched fields (nutrition,
+      assets, comments, ratings, tools, tags) survive because we never
+      include them in the PATCH.
+    """
+    mealie_url, mealie_token = _mealie()
+    if not mealie_url:
+        raise RuntimeError("MEALIE_URL is not set — configure it in the setup page or .env.")
+    if not mealie_token:
+        raise RuntimeError("MEALIE_TOKEN is not set — configure it in the setup page or .env.")
+
+    owns_client = client is None
+    if owns_client:
+        client = httpx.Client(
+            base_url=mealie_url,
+            headers={"Authorization": f"Bearer {mealie_token}"},
+            timeout=30,
+        )
+
+    try:
+        # Update the name if it changed (its own PATCH, like description).
+        if recipe.get("name"):
+            r = client.patch(f"/api/recipes/{slug}", json={"name": recipe["name"]})
+            r.raise_for_status()
+
+        _patch_fields(client, slug, recipe, structured=True)
+        print(f"  updated -> {mealie_url}/g/home/r/{slug}", file=sys.stderr)
+        return slug
+    except Exception:
+        # CRITICAL: do NOT delete-on-failure — this is a real recipe the user
+        # already has. Leave it as-is and surface the error.
+        print(f"  ! update failed for {slug} — recipe left as-is", file=sys.stderr)
         raise
     finally:
         if owns_client:

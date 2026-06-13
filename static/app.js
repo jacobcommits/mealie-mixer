@@ -3,7 +3,7 @@
 
 function mixer() {
   return {
-    view: 'gate',   // gate | login | setup | settings | input | review | done | history | cookbook-upload | cookbook | cookbook-review
+    view: 'gate',   // gate | login | setup | settings | input | review | done | history | cookbook-upload | cookbook | cookbook-review | fix
     languages: ['English', 'Polish', 'German', 'French', 'Spanish', 'Italian', 'Ukrainian'],
     foods: [],
     categories: [],
@@ -29,6 +29,8 @@ function mixer() {
     cbRecipes: [], cbStructured: [], cbExpanded: null, cbEditIndex: null, cookbookJob: null, cbReviewJobId: '',
     // done
     lastName: '', lastUrl: '',
+    // fix existing recipe (B9)
+    mealieRecipes: [], fixSearch: '', updateMode: null,  // null = create, 'slug' = update that slug
     // ui
     loading: false, loadingMsg: '', error: '', toast: '', menuOpen: false,
 
@@ -99,6 +101,20 @@ function mixer() {
       this.menuOpen = false; this.error = '';
       this.cbRecipes = []; this.cbStructured = []; this.cbExpanded = null; this.cbEditIndex = null;
       this.view = 'cookbook-upload';
+    },
+    async openFix() {
+      this.menuOpen = false; this.error = ''; this.fixSearch = '';
+      this.loadingMsg = 'Loading recipes…'; this.loading = true;
+      try {
+        this.mealieRecipes = (await getJSON('/api/mealie-recipes')).recipes || [];
+        this.view = 'fix';
+      } catch (e) { this.error = 'Could not load recipes from Mealie: ' + (e.message || e); }
+      finally { this.loading = false; }
+    },
+    fixFiltered() {
+      const q = (this.fixSearch || '').trim().toLowerCase();
+      if (!q) return this.mealieRecipes;
+      return this.mealieRecipes.filter(r => r.name.toLowerCase().includes(q));
     },
     async toggleHist(h) {
       if (this.expandedId === h.id) { this.expandedId = null; return; }
@@ -177,7 +193,7 @@ function mixer() {
         if (!r.ok) throw new Error(await detail(r));
         const recipes = (await r.json()).recipes || [];
         if (!recipes.length) throw new Error('No recipe found — try a clearer shot or a different link.');
-        this.queue = recipes.slice(1); this.loadRecipe(recipes[0]); this.view = 'review';
+        this.queue = recipes.slice(1); this.updateMode = null; this.loadRecipe(recipes[0]); this.view = 'review';
       } catch (e) { this.error = String(e.message || e); }
       finally { this.loading = false; }
     },
@@ -218,7 +234,7 @@ function mixer() {
         this.loading = false; this.audioProgress = 0; this._extractJob = null;
         const recipes = (job.recipes || []).map(x => x.recipe);
         if (!recipes.length) { this.error = 'No recipe found — try adding a clearer source.'; return; }
-        this.queue = recipes.slice(1); this.loadRecipe(recipes[0]); this.view = 'review';
+        this.queue = recipes.slice(1); this.updateMode = null; this.loadRecipe(recipes[0]); this.view = 'review';
         return;
       }
       if (job.status === 'error') {
@@ -276,6 +292,7 @@ function mixer() {
     loadRecipe(r) {
       this.clearPhoto();   // each recipe starts without a picked photo
       this.cbEditIndex = null;   // normal review flow (not a cookbook edit) unless set after
+      // updateMode is set separately by the caller (restandardize sets it; normal extract clears it)
       this.recipe = {
         name: r.name || '', description: r.description || '', servings: r.servings,
         yield: r.yield || '', image_url: r.image_url || '', tags: r.tags || [],
@@ -379,6 +396,7 @@ function mixer() {
       return false;
     },
     async push() {
+      if (this.updateMode) { return this.pushUpdate(); }   // B9: update existing recipe
       if (this.nameExists() && !this._dupOk) { this.dupModal = true; return; }  // confirm duplicates
       this._dupOk = false;
       this.error = ''; this.loadingMsg = 'Saving to Mealie…'; this.loading = true;
@@ -441,9 +459,56 @@ function mixer() {
     reset() {
       this.fileList = null; this.url = ''; this.pastedText = ''; this.prompt = ''; this.error = '';
       this.clearPhoto(); this.clearAudio(); this.clearSourceImages(); this.zoomSrc = ''; this.dupModal = false; this.clearSession();
-      this.recipe = emptyRecipe(); this.instructionsText = ''; this.queue = []; this.view = 'input';
+      this.recipe = emptyRecipe(); this.instructionsText = ''; this.queue = []; this.updateMode = null; this.view = 'input';
     },
     showToast(m) { this.toast = m; clearTimeout(this._t); this._t = setTimeout(() => this.toast = '', 2600); },
+
+    // ── B9: fix existing recipe (re-standardize) ────────────────────────
+    async restandardize(slug) {
+      this.error = ''; this.loadingMsg = 'Re-standardizing…'; this.loading = true;
+      try {
+        const r = await api('/api/restandardize', { method: 'POST', body: JSON.stringify({ slug, language: this.language }) });
+        if (!r.ok) throw new Error(await detail(r));
+        const data = await r.json();
+        this.updateMode = data.slug;   // signals review to use the update endpoint
+        this.loadRecipe(data.recipe);
+        this.view = 'review';
+      } catch (e) { this.error = String(e.message || e); }
+      finally { this.loading = false; }
+    },
+    async pushUpdate() {
+      const slug = this.updateMode;
+      if (!slug) return;
+      this.error = ''; this.loadingMsg = 'Saving changes…'; this.loading = true;
+      try {
+        const body = {
+          name: (this.recipe.name || '').trim(), description: this.recipe.description || '',
+          servings: numOrNull(this.recipe.servings), yield: this.recipe.yield || '',
+          image_url: null,   // don't touch the existing image via the update PATCH
+          ingredients: this.recipe.ingredients.filter(i => blank(i.food) || blank(i.note))
+            .map(i => ({ quantity: parseQty(i.quantity), unit: blank(i.unit), food: blank(i.food), note: blank(i.note), title: blank(i.title) })),
+          instructions: this.instructionsText.split('\n').map(s => s.trim()).filter(Boolean), tags: [],
+          categories: this.recipe.categories || [], source_url: this.recipe.source_url || '',
+          notes: (this.recipe.notes || []).filter(n => (n.text || '').trim() || (n.title || '').trim())
+            .map(n => ({ title: (n.title || '').trim(), text: (n.text || '').trim() })),
+        };
+        if (!body.name) throw new Error('Give the recipe a name first.');
+        const r = await fetch('/api/recipes/' + slug + '/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' });
+        if (!r.ok) throw new Error(await detail(r));
+        const out = await r.json(); this.lastName = body.name; this.lastUrl = out.url;
+        this.history.unshift({ name: body.name, slug: out.slug, source_url: body.source_url || '',
+          mealie_url: out.url, status: 'updated', created_at: new Date().toISOString() });
+        if (this.photoFile) {
+          try {
+            const fd = new FormData(); fd.append('file', this.photoFile);
+            const ir = await fetch('/api/recipe-image/' + out.slug, { method: 'PUT', body: fd, credentials: 'same-origin' });
+            if (!ir.ok) this.showToast('Recipe updated — but the photo upload failed');
+          } catch (_) { this.showToast('Recipe updated — but the photo upload failed'); }
+        }
+        this.updateMode = null; this.clearSession(); this.view = 'done';
+      } catch (e) { this.error = String(e.message || e); }
+      finally { this.loading = false; }
+    },
 
     // ── Cookbook bulk import (B7, dev) ──────────────────────────────────
     async pickCookbook(e) {

@@ -32,6 +32,7 @@ import jobs
 import transcribe
 from extract import (
     extract_recipes_from_sources,
+    extract_recipes_from_text,
     file_to_text,
     is_document,
     test_ai,
@@ -39,9 +40,13 @@ from extract import (
 from push import (
     fetch_category_names,
     fetch_food_names,
+    fetch_recipe,
     fetch_recipe_names,
+    fetch_recipes,
     push_recipe,
+    recipe_to_text,
     test_mealie,
+    update_recipe,
     upload_recipe_image,
 )
 
@@ -467,6 +472,94 @@ def api_categories():
 def api_recipe_names():
     """Existing recipe names for the review-step duplicate warning."""
     return {"names": fetch_recipe_names()}
+
+
+# ── B9: Fix existing Mealie recipes (re-standardize) ─────────────────────────
+
+class RestandardizeBody(BaseModel):
+    slug: str
+    language: str = "English"
+
+
+class UpdateResponse(BaseModel):
+    slug: str
+    url: str
+
+
+@router.get("/mealie-recipes", dependencies=[Depends(require_access)])
+def api_mealie_recipes():
+    """All Mealie recipes as [{slug, name}] — powers the B9 browse list."""
+    return {"recipes": fetch_recipes()}
+
+
+@router.post("/restandardize", dependencies=[Depends(require_access)])
+def api_restandardize(body: RestandardizeBody):
+    """Fetch an existing Mealie recipe by slug, render it to text, run it
+    through the same LLM structuring pipeline, and return the cleaned recipe
+    for review. One LLM call — fast enough to be synchronous."""
+    try:
+        mealie_rec = fetch_recipe(body.slug)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Couldn't fetch the recipe from Mealie: {str(e)[:200]}")
+
+    text = recipe_to_text(mealie_rec)
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="That recipe has no usable content to re-standardize.")
+
+    try:
+        known_categories = fetch_category_names()
+    except Exception:
+        known_categories = []
+
+    try:
+        recipes = extract_recipes_from_text(
+            text, target_language=body.language, known_categories=known_categories,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI structuring failed: {str(e)[:300]}")
+
+    if not recipes:
+        raise HTTPException(status_code=502, detail="The AI didn't return a recipe — try again.")
+
+    # Take the first (should be exactly one), and carry over the existing
+    # slug, image, and source URL so the update targets the right recipe.
+    result = recipes[0]
+    result["_slug"] = body.slug
+    # Preserve the existing image (Mealie stores it; we don't want to clear it)
+    result.setdefault("image_url", "")
+    # Preserve the original source URL if the Mealie recipe had one
+    result.setdefault("source_url", mealie_rec.get("orgURL") or "")
+
+    return {"recipe": result, "slug": body.slug}
+
+
+@router.post("/recipes/{slug}/update", dependencies=[Depends(require_access)])
+def api_update_recipe(slug: str, recipe: Recipe):
+    """Update an existing Mealie recipe in place (B9). Returns the slug
+    and full URL. Does NOT create a new recipe or delete on failure."""
+    recipe_dict = recipe.model_dump(by_alias=True)
+
+    try:
+        result_slug = update_recipe(slug, recipe_dict)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Update failed: {str(e)[:300]}")
+
+    mealie_url = config.get("MEALIE_URL").rstrip("/")
+    url = f"{mealie_url}/g/home/r/{result_slug}"
+
+    # Record in history (best-effort)
+    try:
+        history.log_import(
+            name=recipe.name, slug=result_slug,
+            source_url=recipe.source_url, mealie_url=url,
+            status="updated", payload=recipe_dict,
+        )
+    except Exception:
+        pass
+
+    return UpdateResponse(slug=result_slug, url=url)
 
 
 @router.post("/cookbook/split", dependencies=[Depends(require_access)])
