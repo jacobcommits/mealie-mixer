@@ -160,7 +160,9 @@ function mixer() {
     // ── recipe flow ─────────────────────────────────────────────────────
     async extract() {
       this.error = '';
-      if (this.audioBlob) { return this.extractAudio(); }   // voice notes go async (B3) — whisper is slow
+      // Any audio/video → background job (whisper is slow). Everything else combines
+      // synchronously (the backend merges all provided sources into one recipe).
+      if (this.audioBlob) { return this.extractJob(); }
       this.loadingMsg = 'Reading your recipe…'; this.loading = true;
       try { localStorage.setItem('mm-lang', this.language); } catch (_) {}   // remember for next time / share flow
       this.clearSourceImages();
@@ -168,8 +170,8 @@ function mixer() {
       try {
         const fd = new FormData();
         if (this.fileList && this.fileList.length) { for (const f of this.fileList) fd.append('files', f); }
-        else if (this.url.trim()) { fd.append('url', this.url.trim()); }
-        else if (this.pastedText.trim()) { fd.append('text', this.pastedText.trim()); }
+        if (this.url.trim()) { fd.append('url', this.url.trim()); }
+        if (this.pastedText.trim()) { fd.append('text', this.pastedText.trim()); }
         fd.append('language', this.language); fd.append('prompt', this.prompt || '');
         const r = await fetch('/api/extract', { method: 'POST', body: fd, credentials: 'same-origin' });
         if (!r.ok) throw new Error(await detail(r));
@@ -179,43 +181,51 @@ function mixer() {
       } catch (e) { this.error = String(e.message || e); }
       finally { this.loading = false; }
     },
-    // Voice notes transcribe server-side (whisper is slow, esp. the first-run model
-    // download), so we start a job and poll it rather than block on one long request.
-    async extractAudio() {
+    // Combine flow: when a voice note / screen-recording is in the mix, transcription (and
+    // any link fetch) runs server-side as a job we poll, so the slow first run doesn't hang
+    // the request. Sends every source the user added — they get merged into one recipe.
+    async extractJob() {
       this.error = ''; this.audioProgress = 0;
-      this.loadingMsg = 'Transcribing your voice note…'; this.loading = true;
+      this.loadingMsg = 'Working…'; this.loading = true;
       try { localStorage.setItem('mm-lang', this.language); } catch (_) {}
+      this.clearSourceImages();
+      if (this.fileList && this.fileList.length) this.sourceImages = [...this.fileList].filter(f => (f.type || '').startsWith('image/')).map(f => URL.createObjectURL(f));
       try {
         const fd = new FormData();
-        fd.append('audio', this.audioBlob, 'note.webm');
+        if (this.fileList && this.fileList.length) { for (const f of this.fileList) fd.append('files', f); }
+        if (this.url.trim()) { fd.append('url', this.url.trim()); }
+        if (this.pastedText.trim()) { fd.append('text', this.pastedText.trim()); }
+        if (this.audioBlob) { fd.append('audio', this.audioBlob, 'note.webm'); }
         fd.append('language', this.language); fd.append('prompt', this.prompt || '');
-        const r = await fetch('/api/extract/audio', { method: 'POST', body: fd, credentials: 'same-origin' });
+        const r = await fetch('/api/extract/job', { method: 'POST', body: fd, credentials: 'same-origin' });
         if (!r.ok) throw new Error(await detail(r));
-        this._audioJob = (await r.json()).job_id;
-        this.audioPoll();
+        this._extractJob = (await r.json()).job_id;
+        this.jobPoll();
       } catch (e) { this.error = String(e.message || e); this.loading = false; }
     },
-    async audioPoll() {
-      const jid = this._audioJob; if (!jid) return;
+    async jobPoll() {
+      const jid = this._extractJob; if (!jid) return;
       let job;
-      try { job = await getJSON('/api/extract/audio/' + jid); }
-      catch (e) { this.error = String(e.message || e); this.loading = false; this._audioJob = null; return; }
+      try { job = await getJSON('/api/extract/job/' + jid); }
+      catch (e) { this.error = String(e.message || e); this.loading = false; this._extractJob = null; return; }
       this.audioProgress = job.progress || 0;
-      this.loadingMsg = job.phase === 'structuring'
-        ? 'Structuring the recipe…'
-        : ('Transcribing your voice note… ' + Math.round((job.progress || 0) * 100) + '%');
+      this.loadingMsg = ({
+        'fetching link': 'Fetching the link…',
+        'transcribing': 'Transcribing… ' + Math.round((job.progress || 0) * 100) + '%',
+        'structuring': 'Structuring the recipe…',
+      })[job.phase] || 'Working…';
       if (job.status === 'done') {
-        this.loading = false; this.audioProgress = 0; this._audioJob = null;
+        this.loading = false; this.audioProgress = 0; this._extractJob = null;
         const recipes = (job.recipes || []).map(x => x.recipe);
-        if (!recipes.length) { this.error = 'No recipe found — try dictating the whole recipe, amounts and all.'; return; }
+        if (!recipes.length) { this.error = 'No recipe found — try adding a clearer source.'; return; }
         this.queue = recipes.slice(1); this.loadRecipe(recipes[0]); this.view = 'review';
         return;
       }
       if (job.status === 'error') {
-        this.loading = false; this.audioProgress = 0; this._audioJob = null;
-        this.error = job.error || 'Transcription failed.'; return;
+        this.loading = false; this.audioProgress = 0; this._extractJob = null;
+        this.error = job.error || 'Extraction failed.'; return;
       }
-      this._audioTimer = setTimeout(() => this.audioPoll(), 1500);
+      this._extractTimer = setTimeout(() => this.jobPoll(), 1500);
     },
     // ── voice note (B3) ──────────────────────────────────────────────────
     async toggleRecord() {

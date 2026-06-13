@@ -1,3 +1,5 @@
+import pytest
+
 import extract
 
 
@@ -51,3 +53,38 @@ def test_parse_recipes_strips_code_fence():
 def test_parse_recipes_extracts_from_prose():
     raw = 'Sure! Here you go:\n{"recipes": [{"name": "Z"}]}\nHope that helps.'
     assert extract.parse_recipes(raw) == [{"name": "Z"}]
+
+
+# ── unified multi-source extraction ──────────────────────────────────────
+
+def test_from_sources_combines_caption_transcript_and_image(monkeypatch):
+    captured = {}
+
+    def fake_structure(content):
+        captured["content"] = content
+        return [{"name": "Reel dish"}]
+
+    monkeypatch.setattr(extract, "_structure", fake_structure)
+    monkeypatch.setattr(extract, "is_video_url", lambda u: True)
+    monkeypatch.setattr(extract, "_video_metadata",
+                        lambda u: {"title": "T", "description": "200g flour", "thumbnail": "http://x/t.jpg"})
+    monkeypatch.setattr(extract, "image_to_data_url", lambda p: "data:image/jpeg;base64,AAAA")
+    import transcribe
+    monkeypatch.setattr(transcribe, "transcribe_audio", lambda p, **k: "mix and bake for 20 min")
+
+    out = extract.extract_recipes_from_sources(
+        image_paths=["/tmp/x.jpg"], url="http://insta/reel", audio_path="/tmp/n.webm",
+    )
+
+    assert out[0]["name"] == "Reel dish"
+    assert out[0]["image_url"] == "http://x/t.jpg"          # link thumbnail → dish photo
+    assert out[0]["source_url"] == "http://insta/reel"
+    text = captured["content"][0]["text"]
+    assert "LINKED POST CAPTION" in text and "200g flour" in text       # caption (ingredients)
+    assert "SPOKEN (transcribed" in text and "mix and bake" in text     # voice-over (steps)
+    assert any(part.get("type") == "image_url" for part in captured["content"])  # image carried
+
+
+def test_from_sources_requires_at_least_one_source():
+    with pytest.raises(ValueError):
+        extract.extract_recipes_from_sources()

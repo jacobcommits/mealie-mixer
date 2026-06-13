@@ -106,6 +106,7 @@
     <template x-if="view === 'input'">
       <div class="card">
         <h2>Add a recipe</h2>
+        <p class="muted small">Add one source or several — a link, photo(s), text, a voice note or video — and we'll merge them into one recipe.</p>
         <p class="muted small">📚 Whole cookbook or a multi-recipe PDF? <button type="button" class="linkbtn" @click="openCookbook()">Use Cookbook import</button> (in the ☰ menu) for much better results.</p>
         <label class="filezone">
           <input type="file" accept="image/*,.pdf,.md,.markdown,.txt,.eml" multiple
@@ -114,27 +115,27 @@
                   ? (fileList.length + ' file(s) selected')
                   : '📷 Photo, screenshot(s), or a PDF / .md / .txt / .eml'"></span>
         </label>
-        <div class="or">— or —</div>
+        <div class="or">— and / or —</div>
         <input class="input" type="url" placeholder="paste a recipe link" x-model="url" />
         <small class="warn" x-show="importedNote()" x-text="importedNote()"></small>
-        <small class="muted small" x-show="socialUrl()">ℹ We'll read the post's caption. If the recipe is only spoken/shown in the video (not written in the caption), screenshot the post and share the image instead.</small>
-        <div class="or">— or —</div>
+        <small class="muted small" x-show="socialUrl()">ℹ We'll read the post's caption. If the steps are only spoken in the video, screenshot the post, or add a screen-recording below to transcribe the voice-over.</small>
+        <div class="or">— and / or —</div>
         <textarea class="input" rows="4" placeholder="…or paste recipe text" x-model="pastedText"></textarea>
         <template x-if="cfgInfo.voice">
           <div class="voicebox">
-            <div class="or">— or —</div>
+            <div class="or">— and / or —</div>
             <div class="row">
               <button type="button" class="btn ghost" :class="{ recpulse: recording }" @click="toggleRecord()"
                       x-text="recording ? ('⏹ Stop · ' + recClock()) : '🎤 Record a voice note'"></button>
-              <label class="btn ghost filebtn">📁 Upload audio
-                <input type="file" accept="audio/*" @change="pickAudio($event)" />
+              <label class="btn ghost filebtn">📁 Upload audio/video
+                <input type="file" accept="audio/*,video/*" @change="pickAudio($event)" />
               </label>
             </div>
             <div class="audiorow" x-show="audioBlob && !recording">
               <audio class="audioprev" :src="audioUrl" controls></audio>
               <button type="button" class="x" @click="clearAudio()" title="remove">✕</button>
             </div>
-            <small class="muted small">Read the recipe aloud — ingredients with their amounts, then the steps.</small>
+            <small class="muted small">Read the recipe aloud, or upload a screen-recording of a reel — we'll transcribe the voice-over (steps) and pair it with the caption/link for the ingredients.</small>
           </div>
         </template>
         <div class="row">
@@ -144,7 +145,7 @@
           <input class="input" type="text" placeholder="extra note (optional)" x-model="prompt" />
         </div>
         <button class="btn primary" :disabled="loading || (!fileList?.length && !url.trim() && !pastedText.trim() && !audioBlob)"
-                @click="extract()">Extract recipe</button>
+                @click="extract()">Make recipe</button>
         <p class="err" x-show="error" x-text="error"></p>
       </div>
     </template>

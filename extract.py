@@ -53,10 +53,11 @@ def build_user_prompt(target_language: str, user_note: str, source: str = "the i
     )
     return f"""Extract every recipe in {source}.
 
-If several images are provided, they may be parts of the SAME recipe (e.g.
-ingredients on one screenshot, the method on another) — combine them into ONE
-recipe. Only return multiple recipes if the images clearly show genuinely
-different dishes.
+If several sources are provided — multiple images, and/or a caption, pasted text,
+or a transcript of spoken audio/video — they may describe the SAME recipe from
+different angles (e.g. ingredients listed in a caption, the method narrated in the
+audio, a photo of the dish). Combine them into ONE coherent recipe. Only return
+multiple recipes if the sources clearly show genuinely different dishes.
 
 For each recipe, output:
 - name
@@ -417,6 +418,91 @@ def extract_recipes_from_video(
         if meta["thumbnail"]:
             r["image_url"] = meta["thumbnail"]
         r["source_url"] = url
+    return recipes
+
+
+def extract_recipes_from_sources(
+    image_paths=(),
+    url: str = "",
+    text: str = "",
+    doc_texts=(),
+    audio_path: str = "",
+    user_note: str = "",
+    target_language: str = "English",
+    known_categories=(),
+    progress=None,
+) -> list[dict]:
+    """Unified extraction: combine ANY mix of sources — image(s), a recipe/social link,
+    pasted text, document text, and a voice note / screen-recording — into ONE structuring
+    call. Each text source goes in under a labeled header so the model knows its provenance
+    (e.g. ingredients from a reel caption + steps narrated in the video). Reuses the same
+    helpers as the single-source paths. `progress` (0..1) is forwarded to the transcriber
+    for the UI bar. Per-source failures are soft (one bad link won't sink a combine that has
+    other usable inputs); raises only if nothing usable was provided."""
+    url = (url or "").strip()
+    image_paths = list(image_paths or [])
+    doc_texts = [t for t in (doc_texts or []) if t and t.strip()]
+
+    text_blocks: list[str] = []
+    page_image_url = ""
+
+    if url:
+        if is_video_url(url):
+            try:
+                meta = _video_metadata(url)
+                cap = "\n\n".join(p for p in [
+                    f"Title: {meta['title']}" if meta.get("title") else "",
+                    f"Caption:\n{meta['description']}" if meta.get("description") else "",
+                ] if p)
+                if cap.strip():
+                    text_blocks.append(f"--- LINKED POST CAPTION ---\n{cap}")
+                page_image_url = meta.get("thumbnail") or ""
+            except Exception:
+                pass
+        else:
+            try:
+                source_text, page_image_url = _scrape_url(url)
+                if source_text.strip():
+                    text_blocks.append(f"--- LINKED PAGE ---\n{source_text}")
+            except Exception:
+                pass
+
+    if text and text.strip():
+        text_blocks.append(f"--- PASTED TEXT ---\n{text.strip()}")
+
+    for dt in doc_texts:
+        text_blocks.append(f"--- DOCUMENT ---\n{dt.strip()}")
+
+    if audio_path:
+        import transcribe
+        transcript = transcribe.transcribe_audio(audio_path, progress=progress)
+        if transcript.strip():
+            text_blocks.append(f"--- SPOKEN (transcribed from audio/video) ---\n{transcript.strip()}")
+        elif not text_blocks and not image_paths:
+            raise ValueError(
+                "Couldn't make out any speech in that audio — try again, a bit closer to the mic."
+            )
+
+    if not text_blocks and not image_paths:
+        raise ValueError(
+            "Nothing to extract from — add a photo, a link, some text, or a voice note / video."
+        )
+
+    prompt = build_user_prompt(
+        target_language, user_note,
+        source="the sources below", known_categories=known_categories,
+    )
+    text_payload = prompt + ("\n\n" + "\n\n".join(text_blocks) if text_blocks else "")
+    content = [{"type": "text", "text": text_payload}]
+    for p in image_paths:
+        content.append({"type": "image_url", "image_url": {"url": image_to_data_url(p)}})
+
+    recipes = _structure(content)
+    for r in recipes:
+        if page_image_url:
+            r.setdefault("image_url", page_image_url)
+        if url:
+            r["source_url"] = url
     return recipes
 
 

@@ -137,37 +137,43 @@ def list_jobs(limit: int = 10) -> list[dict]:
     return [{k: j.get(k) for k in SUMMARY_KEYS} for j in ordered]
 
 
-# ── voice-note transcription jobs (B3) ──────────────────────────────────────
-# Whisper is slow — especially the first run, which downloads the model to /data — so a
-# voice note transcribes in a background thread and the browser polls get_job(), rather
-# than blocking the /api/extract request (which would just spin / time out).
+# ── unified extraction jobs (B3 voice → multi-source combine) ────────────────
+# Some sources are slow — whisper transcription (esp. the first run, which downloads the
+# model to /data) and link scraping/yt-dlp — so a combine runs in a background thread and
+# the browser polls get_job(), rather than blocking the /api/extract request. `sources` is
+# a dict {image_paths, url, text, doc_texts, audio_path, _tmp_paths}.
 
-def _extract_audio_default(audio_path, user_note, language, known_categories, progress):
-    from extract import extract_recipes_from_audio
-    return extract_recipes_from_audio(
-        audio_path, user_note=user_note, target_language=language,
+def _extract_sources_default(sources, user_note, language, known_categories, progress):
+    from extract import extract_recipes_from_sources
+    return extract_recipes_from_sources(
+        image_paths=sources.get("image_paths", []),
+        url=sources.get("url", ""),
+        text=sources.get("text", ""),
+        doc_texts=sources.get("doc_texts", []),
+        audio_path=sources.get("audio_path", ""),
+        user_note=user_note, target_language=language,
         known_categories=known_categories, progress=progress,
     )
 
 
-def _process_audio_job(job, audio_path, language, user_note, known_categories,
-                       extract_fn=None) -> dict:
-    """Transcribe + structure one voice note. Mutates `job` in place (status/phase/progress)
-    and always removes the temp audio file. `extract_fn(path, note, lang, cats, progress)`
-    is injectable for tests."""
-    extract_fn = extract_fn or _extract_audio_default
+def _process_extract_job(job, sources, language, user_note, known_categories,
+                         extract_fn=None) -> dict:
+    """Combine the given sources into recipe(s). Mutates `job` in place (status/phase/progress)
+    and always removes the temp upload files in `sources['_tmp_paths']`. `extract_fn(sources,
+    note, lang, cats, progress)` is injectable for tests."""
+    extract_fn = extract_fn or _extract_sources_default
 
     def on_progress(frac):
         with _LOCK:
             job["progress"] = round(float(frac), 3)
-            if frac >= 0.999 and job["phase"] == "transcribing":
-                job["phase"] = "structuring"   # transcript's in; one LLM call to go
+            if job["phase"] in ("fetching link", "transcribing"):
+                job["phase"] = "transcribing" if frac < 0.999 else "structuring"
 
     try:
-        recs = extract_fn(audio_path, user_note, language, known_categories, on_progress) or []
+        recs = extract_fn(sources, user_note, language, known_categories, on_progress) or []
         with _LOCK:
             for rec in recs:
-                job["recipes"].append({"recipe": rec, "image": None})
+                job["recipes"].append({"recipe": rec, "image": rec.get("image_url")})
             job["done"] = 1
             job["progress"] = 1.0
             job["phase"] = "done"
@@ -178,20 +184,26 @@ def _process_audio_job(job, audio_path, language, user_note, known_categories,
             job["failed"] = 1
             job["error"] = str(e)
     finally:
-        try:
-            os.remove(audio_path)
-        except OSError:
-            pass
+        for p in sources.get("_tmp_paths", []):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
         _flush(job)
     return job
 
 
-def start_audio_job(audio_path: str, language: str = "English", user_note: str = "",
-                    known_categories=()) -> str:
-    """Kick off a transcription job in a daemon thread; returns the id the browser polls."""
+def start_extract_job(sources: dict, language: str = "English", user_note: str = "",
+                     known_categories=()) -> str:
+    """Kick off a combine extraction in a daemon thread; returns the id the browser polls."""
     job_id = uuid.uuid4().hex[:12]
+    # Opening phase reflects the first slow step the job will hit (audio dominates; else a
+    # link fetch; else straight to the LLM call).
+    phase = ("transcribing" if sources.get("audio_path")
+             else "fetching link" if sources.get("url")
+             else "structuring")
     job = {
-        "id": job_id, "kind": "audio", "status": "running", "phase": "transcribing",
+        "id": job_id, "kind": "extract", "status": "running", "phase": phase,
         "progress": 0.0, "total": 1, "done": 0, "failed": 0, "recipes": [],
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
@@ -199,8 +211,8 @@ def start_audio_job(audio_path: str, language: str = "English", user_note: str =
         JOBS[job_id] = job
     _flush(job)
     threading.Thread(
-        target=_process_audio_job,
-        args=(job, audio_path, language, user_note, list(known_categories)),
+        target=_process_extract_job,
+        args=(job, sources, language, user_note, list(known_categories)),
         daemon=True,
     ).start()
     return job_id

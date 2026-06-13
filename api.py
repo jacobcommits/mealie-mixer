@@ -31,14 +31,9 @@ import history
 import jobs
 import transcribe
 from extract import (
-    extract_recipes,
-    extract_recipes_from_audio,
-    extract_recipes_from_text,
-    extract_recipes_from_url,
-    extract_recipes_from_video,
+    extract_recipes_from_sources,
     file_to_text,
     is_document,
-    is_video_url,
     test_ai,
 )
 from push import (
@@ -210,11 +205,13 @@ async def api_extract(
     language: str = Form("English"),
     prompt: str = Form(""),
 ):
-    """Extract recipe(s) from uploaded image(s), a recipe/social URL, or raw text.
+    """Extract recipe(s) from ANY mix of sources, combined into one recipe.
 
-    Accepts ``multipart/form-data`` with one or more image ``files``, a ``url``
-    field (recipe page or social/video link), or a ``text`` field (pasted recipe
-    text). Precedence: url, then files, then text. Returns structured JSON.
+    Accepts ``multipart/form-data`` with any of: image/document ``files``, a ``url``
+    (recipe page or social/reel link), ``text`` (pasted), and an ``audio`` voice note /
+    screen-recording. All provided sources are forwarded together to a single LLM call —
+    e.g. ingredients from a reel caption + steps narrated in the video. Synchronous (agents
+    can wait); the browser uses POST /api/extract/job for a progress bar on slow sources.
     """
     # Feed the user's existing Mealie categories to the prompt so the AI reuses
     # them instead of spawning near-dupes. Fail-soft: empty if Mealie's unreachable.
@@ -225,71 +222,19 @@ async def api_extract(
 
     tmp_paths: list[str] = []
     try:
-        if url and url.strip():
-            u = url.strip()
-            if is_video_url(u):
-                recipes = extract_recipes_from_video(
-                    u, user_note=prompt, target_language=language,
-                    known_categories=known_categories,
-                )
-            else:
-                recipes = extract_recipes_from_url(
-                    u, user_note=prompt, target_language=language,
-                    known_categories=known_categories,
-                )
-        elif files:
-            # Split the batch: images → vision LLM; documents (pdf/md/txt/eml) →
-            # text pipeline (B6). A mixed batch uses the images (v1 doesn't combine).
-            image_paths: list[str] = []
-            doc_texts: list[str] = []
-            for f in files:
-                data = await f.read()
-                if is_document(f.filename or ""):
-                    doc_texts.append(file_to_text(f.filename or "", data))
-                else:
-                    suffix = os.path.splitext(f.filename or "img.jpg")[1] or ".jpg"
-                    fd, path = tempfile.mkstemp(suffix=suffix, prefix="mm-api-")
-                    with os.fdopen(fd, "wb") as out:
-                        out.write(data)
-                    tmp_paths.append(path)
-                    image_paths.append(path)
-            if image_paths:
-                recipes = extract_recipes(
-                    image_paths, user_note=prompt, target_language=language,
-                    known_categories=known_categories,
-                )
-            elif any(t.strip() for t in doc_texts):
-                recipes = extract_recipes_from_text(
-                    "\n\n".join(doc_texts), user_note=prompt, target_language=language,
-                    known_categories=known_categories,
-                )
-            else:
-                raise HTTPException(
-                    status_code=400, detail="No readable text found in the uploaded file(s).",
-                )
-        elif audio is not None:
-            suffix = os.path.splitext(audio.filename or "note.webm")[1] or ".webm"
-            fd, path = tempfile.mkstemp(suffix=suffix, prefix="mm-audio-")
-            with os.fdopen(fd, "wb") as out:
-                out.write(await audio.read())
-            tmp_paths.append(path)
-            recipes = extract_recipes_from_audio(   # faster-whisper → text pipeline (B3)
-                path, user_note=prompt, target_language=language,
-                known_categories=known_categories,
-            )
-        elif text and text.strip():
-            recipes = extract_recipes_from_text(
-                text.strip(), user_note=prompt, target_language=language,
-                known_categories=known_categories,
-            )
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail="Provide image file(s), a 'url', 'text', or a voice note ('audio').",
-            )
-    except HTTPException:
-        raise
-    except RuntimeError as e:
+        image_paths, doc_texts, audio_path = await _collect_sources(files, audio, tmp_paths)
+        recipes = extract_recipes_from_sources(
+            image_paths=image_paths,
+            url=(url or "").strip(),
+            text=text or "",
+            doc_texts=doc_texts,
+            audio_path=audio_path,
+            user_note=prompt, target_language=language,
+            known_categories=known_categories,
+        )
+    except ValueError as e:            # nothing provided / no speech in the audio
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:          # missing AI key / voice not built into this image
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         raise HTTPException(
@@ -307,39 +252,74 @@ async def api_extract(
     )
 
 
-@router.post("/extract/audio", dependencies=[Depends(require_access)])
-async def api_extract_audio(
-    audio: UploadFile = File(...),
+async def _collect_sources(files, audio, tmp_paths):
+    """Read uploads into (image_paths, doc_texts, audio_path). Images/audio are written to
+    temp files appended to `tmp_paths` (caller or the job owns cleanup); documents are
+    decoded to text. Shared by the sync /api/extract and the async /api/extract/job."""
+    image_paths: list[str] = []
+    doc_texts: list[str] = []
+    audio_path = ""
+    for f in files or []:
+        data = await f.read()
+        if is_document(f.filename or ""):
+            doc_texts.append(file_to_text(f.filename or "", data))
+        else:
+            suffix = os.path.splitext(f.filename or "img.jpg")[1] or ".jpg"
+            fd, path = tempfile.mkstemp(suffix=suffix, prefix="mm-api-")
+            with os.fdopen(fd, "wb") as out:
+                out.write(data)
+            tmp_paths.append(path)
+            image_paths.append(path)
+    if audio is not None:
+        suffix = os.path.splitext(audio.filename or "note.webm")[1] or ".webm"
+        fd, path = tempfile.mkstemp(suffix=suffix, prefix="mm-audio-")
+        with os.fdopen(fd, "wb") as out:
+            out.write(await audio.read())
+        tmp_paths.append(path)
+        audio_path = path
+    return image_paths, doc_texts, audio_path
+
+
+@router.post("/extract/job", dependencies=[Depends(require_access)])
+async def api_extract_job(
+    files: list[UploadFile] | None = File(None),
+    url: str | None = Form(None),
+    text: str | None = Form(None),
+    audio: UploadFile | None = File(None),
     language: str = Form("English"),
     prompt: str = Form(""),
 ):
-    """Start a background transcription job for a voice note (B3). Whisper is slow —
-    especially the first run, which downloads the model — so this returns a ``job_id`` the
-    browser polls via ``GET /api/extract/audio/{job_id}`` instead of blocking the request.
-    (Agents/CLI can still use the synchronous ``audio`` branch of /api/extract.)"""
-    if not transcribe.is_available():
+    """Start a background combine-extraction job: any mix of image/document files, a url,
+    text, and a voice note / screen-recording. Slow sources (whisper transcription, link
+    scraping) run off the request; the browser polls ``GET /api/extract/job/{job_id}`` and
+    shows a progress bar. Agents can use the synchronous /api/extract instead."""
+    if audio is not None and not transcribe.is_available():
         raise HTTPException(
-            status_code=503,
-            detail="Voice transcription isn't enabled in this build.",
+            status_code=503, detail="Voice transcription isn't enabled in this build.",
         )
     try:
         known_categories = fetch_category_names()
     except Exception:
         known_categories = []
-    suffix = os.path.splitext(audio.filename or "note.webm")[1] or ".webm"
-    fd, path = tempfile.mkstemp(suffix=suffix, prefix="mm-audio-")
-    with os.fdopen(fd, "wb") as out:
-        out.write(await audio.read())
-    # start_audio_job owns the temp file from here — it removes it when the job finishes.
-    job_id = jobs.start_audio_job(
-        path, language=language, user_note=prompt, known_categories=known_categories,
+    tmp_paths: list[str] = []
+    image_paths, doc_texts, audio_path = await _collect_sources(files, audio, tmp_paths)
+    sources = {
+        "image_paths": image_paths,
+        "url": (url or "").strip(),
+        "text": text or "",
+        "doc_texts": doc_texts,
+        "audio_path": audio_path,
+        "_tmp_paths": tmp_paths,   # the job removes these when it finishes
+    }
+    job_id = jobs.start_extract_job(
+        sources, language=language, user_note=prompt, known_categories=known_categories,
     )
     return {"job_id": job_id}
 
 
-@router.get("/extract/audio/{job_id}", dependencies=[Depends(require_access)])
-def api_extract_audio_status(job_id: str):
-    """Status + (when done) structured recipes for a voice-note transcription job."""
+@router.get("/extract/job/{job_id}", dependencies=[Depends(require_access)])
+def api_extract_job_status(job_id: str):
+    """Status + (when done) structured recipes for a combine-extraction job."""
     job = jobs.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
