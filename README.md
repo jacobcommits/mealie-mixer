@@ -1,23 +1,33 @@
 # 🍲 Mealie Mixer
 
-Turn a recipe **screenshot** or **link** into a clean, translated, fully-structured recipe in your [Mealie](https://mealie.io/) collection — with a **human review step before anything is saved**.
+Drop in a recipe from **anywhere** — a screenshot, a link, pasted text, a PDF, a voice note, a screen-recording, or **any mix** — and get a clean, translated, fully-structured recipe in your [Mealie](https://mealie.io/) collection. **You review and edit before anything is saved.**
 
-Point it at a photo of a recipe (even in another language) or a recipe URL. A vision/text LLM reads it, translates it, converts amounts to metric, and splits every ingredient into `quantity / unit / food / note`. You review and edit the result in a web UI, then push it to Mealie with one click — foods and units resolved into real, scalable Mealie entries, categories assigned, and the dish photo attached.
-
-> Built for self-hosters who collect recipes from foreign-language blogs and social posts and want them landing in Mealie cleanly, without hand-typing.
+> Built for self-hosters who collect recipes from foreign-language blogs, social posts, cookbooks, and handwritten cards and want them landing in Mealie cleanly, without hand-typing.
 
 ---
 
 ## What it does
 
-- **Two ways in:** upload one or more **screenshots** (great for Instagram/TikTok posts), or paste a **recipe URL** (blogs/recipe sites).
-- **Translate + standardise:** everything is translated to your target language; measured amounts are converted to metric; `tbsp`/`tsp`/`pinch` kept as-is.
+### Add new recipes
+- **Many ways in:** upload **screenshots** (great for Instagram/TikTok posts), paste a **recipe URL** (blogs/recipe sites), paste **text** (from any source), upload a **document** (PDF, markdown, .txt, .eml), record a **voice note** (dictate a recipe), or upload a **screen-recording** of a reel.
+- **Combine sources:** drop in any mix — e.g. ingredients from a reel caption + steps narrated in the video — and they merge into **one recipe** in a single LLM call.
+- **Translate + standardise:** everything is translated to your target language; measured amounts are converted to metric; `tbsp`/`tsp`/`pinch` kept as-is; countable items (eggs, onions) stay as counts.
 - **Structured ingredients:** each ingredient becomes `quantity / unit / food / note`, so recipes **scale** in Mealie and foods stay clean and reusable.
-- **Review before save:** an editable preview (name, description, servings, yield, ingredients, steps) — **nothing is written to Mealie until you click Approve.**
-- **Food autocomplete:** food fields autocomplete from your existing Mealie foods, so you snap variants ("black pepper") onto an existing food ("pepper") instead of creating near-duplicates.
-- **Categories:** the AI classifies each recipe, **reusing your existing Mealie categories** when one fits and proposing a new one only when none do. You edit them (chips + autocomplete) in review; they're resolved-or-created on push.
-- **Dish photo:** URL imports grab the recipe's photo automatically, and you can **pick or snap a photo for any recipe during review** (handy for text-only screenshots) — Mealie resizes and thumbnails it.
-- **Multiple recipes:** if a screenshot/link contains several recipes, they queue up and you review them one at a time.
+- **Review before save:** an editable preview (name, description, servings, yield, ingredients with section headings, steps, categories, notes) — **nothing is written to Mealie until you approve.**
+- **Food autocomplete:** food fields autocomplete from your existing Mealie foods, so you snap variants onto an existing food instead of creating near-duplicates.
+- **Categories:** the AI classifies each recipe, **reusing your existing Mealie categories** when one fits. You edit them in review; they're resolved-or-created on push.
+- **Useful notes:** culinary tips (storage, substitutions, make-ahead) are extracted from the source and pushed to Mealie's recipe notes — blog-fluff is filtered out.
+- **Dish photo:** URL imports grab the recipe's photo automatically, and you can **pick or snap a photo** during review.
+- **Cookbook import:** upload a recipe-book PDF → it finds each recipe (with its photo) → you pick which to import → the AI structures them → bulk review + push.
+
+### Fix existing recipes
+- **🔧 Fix existing recipe** (new in v0.11): read a messy recipe back out of Mealie, run it through the same AI pipeline to clean up ingredients, translate, convert to metric, and re-structure it. Review and save back onto the same recipe — **update in place**, not a new one. Great for cleaning up scraper-imported recipes with unparsed ingredient strings.
+
+### Other features
+- **Import history:** a log of what you've imported (with dedupe warnings), and the ability to restore a discarded review.
+- **Installable PWA** — add to your phone's home screen for a native-app feel.
+- **REST API** for external bots/agents (Telegram, etc.).
+- **Voice notes** (opt-in build) — dictate a recipe or upload a screen-recording; local transcription via faster-whisper.
 
 It's **one LLM call** per recipe — extraction, translation, and structuring all happen in that single call.
 
@@ -26,21 +36,26 @@ It's **one LLM call** per recipe — extraction, translation, and structuring al
 ## How it works
 
 ```
-screenshot / link  →  extract (LLM)  →  editable review  →  push to Mealie
-                       translate +        (you edit /          create + structured
-                       structure          autocomplete)        ingredients, categories + photo
+any source(s)  →  extract (LLM)  →  editable review  →  push to Mealie
+  screenshot        translate +        (you edit /          create + structured
+  link / text        structure          autocomplete)        ingredients, categories + photo
+  PDF / voice
 ```
 
 Modules, kept UI-agnostic so the pipeline is reusable:
 
 | File | Role |
 |------|------|
-| `extract.py` | Extraction core — images or URL → structured recipe JSON (vision LLM / `recipe-scrapers`) |
-| `push.py` | Mealie side — create recipe, resolve/create foods + units + categories, attach photo |
+| `extract.py` | Extraction core — images, URL, text, documents, audio → structured recipe JSON |
+| `push.py` | Mealie side — create/update recipe, resolve/create foods + units + categories, attach photo |
 | `core.py` / `config.py` | Config layer (env → volume → default) + validation |
-| `api.py` | FastAPI REST API — `/api/extract`, `/api/push`, config/login/foods |
-| `app.py` | Thin FastAPI server — mounts the API + the static web UI (`static/`) |
+| `api.py` | FastAPI REST API — extract, push, re-standardize, config, history |
+| `app.py` | Thin FastAPI server — mounts the API + the static web UI |
 | `static/` | Mobile-first web UI (Alpine.js, no build step) + PWA |
+| `cookbook.py` | PDF cookbook splitter (recipe-per-page layout) |
+| `jobs.py` | Background job runner (cookbook structuring, audio transcription) |
+| `transcribe.py` | Local audio transcription via faster-whisper |
+| `history.py` | SQLite import log (dedupe, restore discards) |
 
 ---
 
@@ -131,11 +146,28 @@ Settings are stored on the **`/data` volume**, so you do this once. Change them 
 
 ## Usage
 
-1. Upload a recipe screenshot **or** paste a recipe link.
+### Adding a new recipe
+
+1. Upload a recipe screenshot, paste a link, paste text, upload a document, or record/upload audio — or **any combination**.
 2. (Optional) add instructions ("no mushrooms") and pick the output language.
-3. Click **Extract recipe**.
-4. Review and edit the structured preview — fix anything the model got wrong, snap foods onto existing ones via the dropdowns, adjust the suggested categories, optionally add a dish photo, clear a quantity to leave it blank.
-5. Click **Approve & push to Mealie**. Done.
+3. Click **Make recipe**.
+4. Review and edit the structured preview — fix anything the model got wrong, snap foods onto existing ones, adjust categories, add notes, optionally add a dish photo.
+5. Click **✅ Approve & push**. Done.
+
+### Fixing an existing recipe
+
+1. Open the **☰ menu → 🔧 Fix existing recipe**.
+2. Search or browse your Mealie recipes, pick one.
+3. The AI re-structures it (cleans ingredients, translates, converts to metric).
+4. Review the result — edit anything.
+5. Click **💾 Save changes** to update in place.
+
+### Cookbook import
+
+1. Open the **☰ menu → 📚 Cookbook import**.
+2. Upload a recipe-book PDF.
+3. Pick which recipes to import, then let the AI structure them.
+4. Bulk-review and push the lot.
 
 **CLI** (no UI):
 
@@ -157,13 +189,17 @@ Interactive docs (Swagger UI) are at **`/docs`** once the server is running.
 
 📄 **Building an agent/bot?** See **[docs/agent-integration.md](docs/agent-integration.md)** for a ready-to-use integration guide (workflow + endpoints + recipe shape).
 
-### Endpoints
+### Key endpoints
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/api/health` | none | `{"status": "ok", "configured": true}` |
-| `POST` | `/api/extract` | API key | Upload image(s) or a URL → structured recipe JSON |
+| `POST` | `/api/extract` | API key | Upload image(s), URL, text, audio → structured recipe JSON |
 | `POST` | `/api/push` | API key | Recipe JSON → create in Mealie, return slug + URL |
+| `GET` | `/api/mealie-recipes` | session/key | List all Mealie recipes (slug + name) |
+| `POST` | `/api/restandardize` | session/key | Fetch + AI re-structure an existing recipe |
+| `POST` | `/api/recipes/{slug}/update` | session/key | Update an existing recipe in place |
+| `GET` | `/api/history` | session/key | Import history |
 
 Auth: send `Authorization: Bearer <MIXER_API_KEY>` or `X-API-Key: <key>`.
 
@@ -198,7 +234,7 @@ curl -X POST http://localhost:7860/api/push \
 
 This app **can write to your Mealie**, and has **no authentication by default**.
 
-- **LAN only. Do NOT expose port 7860 to the internet.** Anyone who can reach it can create recipes in your Mealie.
+- **LAN only. Do NOT expose port 7860 to the internet.** Anyone who can reach it can create/modify recipes in your Mealie.
 - Turn on the optional login (`MIXER_AUTH_USER` + `MIXER_AUTH_PASS`) if others share your network.
 - **Link import fetches arbitrary URLs server-side** (an SSRF surface). Another reason not to expose it.
 - Keep your `.env` out of version control (it's gitignored) and **rotate keys** if they're ever exposed.
@@ -207,9 +243,9 @@ This app **can write to your Mealie**, and has **no authentication by default**.
 
 ## Known limits (by design)
 
-- **Social posts** (Instagram/TikTok) can't be *scraped* by link — they need auth and the recipe lives in a caption. **Screenshot those instead** (that's what the image path is for).
+- **Social posts** (Instagram/TikTok) can't be *scraped* by link — they need auth and the recipe lives in a caption. **Screenshot those** or use the multi-source combine (link for the caption + screen-recording for the steps).
 - Link import relies on the site embedding structured data (schema.org). Most recipe blogs do; some don't.
-- Extraction aims for **~90% accuracy + human review**, not perfection. The review step is where you fix the long tail (odd quantities, food name variants, etc.) — that's the whole point of it.
+- Extraction aims for **~90% accuracy + human review**, not perfection. The review step is where you fix the long tail — that's the whole point of it.
 
 ---
 
