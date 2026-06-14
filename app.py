@@ -11,10 +11,15 @@ Run:
     python app.py            # http://0.0.0.0:7860 — web UI, /docs, /api/*
 """
 
+import mimetypes
 import os
 
 import config
 import core
+
+# Serve fonts with the correct MIME — some environments have no .woff2 mapping,
+# so StaticFiles would otherwise fall back to application/octet-stream.
+mimetypes.add_type("font/woff2", ".woff2")
 
 
 def create_app():

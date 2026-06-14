@@ -1568,3 +1568,96 @@ small {
     padding-right: 4px;
   }
 }
+
+/* ===== Reduced motion — honour the OS setting (a11y) ===== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ===== Light theme — auto-follows the OS (prefers-color-scheme: light) =====
+   Overrides the palette vars + the scattered dark-only hardcoded values. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f5f8;
+    --surface: rgba(255, 255, 255, 0.78);   /* light glass card */
+    --surface-opaque: #ffffff;
+    --surface2: rgba(0, 0, 0, 0.028);        /* faint input fill */
+    --surface2-opaque: #eef0f4;
+    --border: rgba(0, 0, 0, 0.1);
+    --border-hover: rgba(0, 0, 0, 0.18);
+    --text: #1c1c22;
+    --muted: #52525b;
+    --muted-dark: #9ca3af;
+    --accent-light: #c2410c;                 /* used as heading/link colour — dark so it reads on white */
+    --accent-glow: rgba(249, 115, 22, 0.22);
+    --ok: #047857;
+    --danger: #dc2626;
+    --warning: #b45309;
+    --ok-bg: rgba(4, 120, 87, 0.06);
+    --danger-bg: rgba(220, 38, 38, 0.06);
+    --warning-border: rgba(180, 83, 9, 0.22);
+    --warning-bg: rgba(180, 83, 9, 0.06);
+  }
+
+  /* gentler glow mesh on white */
+  body {
+    background-image:
+      radial-gradient(circle at 5% 5%, rgba(249, 115, 22, 0.06) 0%, transparent 40%),
+      radial-gradient(circle at 95% 95%, rgba(99, 102, 241, 0.06) 0%, transparent 45%),
+      radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0) 0%, var(--bg) 100%);
+  }
+
+  ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.03); }
+  ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.18); }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.3); }
+
+  .topbar { background: rgba(255, 255, 255, 0.78); }
+  .actionbar { background: rgba(255, 255, 255, 0.82); }
+  .drawer { background: rgba(255, 255, 255, 0.92); }
+  .drawer-item:hover { background: rgba(0, 0, 0, 0.04); }
+  .drawer-item:active { background: rgba(0, 0, 0, 0.07); }
+
+  /* brand wordmark: dark→accent (the dark version faded white→pale, invisible on white) */
+  .brand { background: linear-gradient(135deg, #1c1c22 30%, var(--accent) 100%); }
+
+  .card { box-shadow: 0 16px 40px rgba(0, 0, 0, 0.1); }
+
+  .input:hover { background-color: rgba(0, 0, 0, 0.02); }
+  .input:focus { background-color: #ffffff; }
+  .btn:hover { background: rgba(0, 0, 0, 0.04); }
+  .btn.ghost:hover { background: rgba(0, 0, 0, 0.03); }
+  .iconbtn:hover { background: rgba(0, 0, 0, 0.04); }
+  .movebtn:hover:not(:disabled) { background: rgba(0, 0, 0, 0.05); }
+  .filezone { background: rgba(0, 0, 0, 0.015); }
+
+  /* keep the select chevron visible on hover (dark version went near-white) */
+  select.input:hover {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231c1c22' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  }
+
+  /* surfaces that tinted black/white assuming a dark background */
+  .ingwrap { background: rgba(0, 0, 0, 0.015); border-color: rgba(0, 0, 0, 0.05); }
+  .ing .input { background: rgba(0, 0, 0, 0.025); border-color: rgba(0, 0, 0, 0.06); }
+  .ing .input:focus { background: #ffffff; }
+  .notewrap, .sourcebox, .histlist, .histpreview, .cbitem { background: rgba(0, 0, 0, 0.025); }
+  .histitem:hover { background: rgba(0, 0, 0, 0.02); }
+  .histtoggle:hover { background: rgba(0, 0, 0, 0.05); }
+  .histsrc { background: rgba(0, 0, 0, 0.05); }
+  .chip .cx:hover { background: rgba(0, 0, 0, 0.08); }
+  .cbbar { background: rgba(0, 0, 0, 0.06); }
+
+  /* opaque dark panels → white */
+  .modalbox { background: #ffffff; }
+  .combobox-options { background: #ffffff; }
+  .overlay { background: rgba(244, 245, 248, 0.9); }
+
+  /* contrast fixes on white */
+  .toast { color: #ffffff; }
+  .err { color: #b91c1c; }
+  .linkbtn { color: #c2410c; }
+}

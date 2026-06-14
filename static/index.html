@@ -21,7 +21,7 @@
       <span>Mealie Mixer</span>
     </button>
     <button class="iconbtn" x-show="['input','review','done','history','settings','cookbook-upload','cookbook','cookbook-progress','cookbook-review','fix'].includes(view)"
-            @click="menuOpen = true" title="Menu">
+            @click="menuOpen = true" title="Menu" aria-label="Open menu">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg>
     </button>
   </header>
@@ -164,7 +164,7 @@
             </div>
             <div class="audiorow" x-show="audioBlob && !recording">
               <audio class="audioprev" :src="audioUrl" controls></audio>
-              <button type="button" class="x" @click="clearAudio()" title="remove">
+              <button type="button" class="x" @click="clearAudio()" title="remove" aria-label="Remove audio">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
               </button>
             </div>
@@ -217,7 +217,7 @@
                 <input type="file" accept="image/*" @change="pickPhoto($event)" />
                 <span x-text="(photoFile || recipe.image_url) ? 'Tap to change the recipe photo' : 'Add recipe photo (optional)'"></span>
               </label>
-              <button class="x" x-show="photoFile || recipe.image_url" @click="removePhoto()" title="remove photo">
+              <button class="x" x-show="photoFile || recipe.image_url" @click="removePhoto()" title="remove photo" aria-label="Remove photo">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
               </button>
             </div>
@@ -259,7 +259,7 @@
               <template x-for="(c, i) in recipe.categories" :key="i">
                 <span class="chip">
                   <span x-text="c"></span>
-                  <button class="cx" @click="removeCategory(i)" title="remove">✕</button>
+                  <button class="cx" @click="removeCategory(i)" title="remove" aria-label="Remove category">✕</button>
                 </span>
               </template>
             </div>
@@ -317,7 +317,7 @@
                     </div>
 
                     <input class="input note" placeholder="notes (e.g. chopped)" x-model="ing.note" />
-                    <button class="x" @click="recipe.ingredients.splice(i,1)" title="remove row">
+                    <button class="x" @click="recipe.ingredients.splice(i,1)" title="remove row" aria-label="Remove ingredient">
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
                     </button>
                   </div>
@@ -325,11 +325,11 @@
                   <div class="rowactions">
                     <!-- Reorder buttons (work on touch + desktop, unlike native drag) -->
                     <div class="reorder">
-                      <button type="button" class="movebtn" title="Move up" :disabled="i === 0"
+                      <button type="button" class="movebtn" title="Move up" aria-label="Move ingredient up" :disabled="i === 0"
                               @click="moveIngredient(i, i - 1)">
                         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
                       </button>
-                      <button type="button" class="movebtn" title="Move down" :disabled="i === recipe.ingredients.length - 1"
+                      <button type="button" class="movebtn" title="Move down" aria-label="Move ingredient down" :disabled="i === recipe.ingredients.length - 1"
                               @click="moveIngredient(i, i + 1)">
                         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                       </button>
@@ -359,7 +359,7 @@
                 <div class="notewrap">
                   <div class="noterow">
                     <input class="input" placeholder="Note Title (Optional)" x-model="n.title" />
-                    <button class="x" @click="removeNote(i)" title="remove">
+                    <button class="x" @click="removeNote(i)" title="remove" aria-label="Remove note">
                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
                     </button>
                   </div>
@@ -570,7 +570,7 @@
                   </div>
                 </div>
                 <button class="histrestore" @click="cbEditOne(i)" style="flex: none;">edit</button>
-                <button class="x" @click="cbRemove(i)" title="remove">
+                <button class="x" @click="cbRemove(i)" title="remove" aria-label="Remove recipe">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
                 </button>
               </div>
@@ -616,7 +616,7 @@
   <nav class="drawer" :class="{ open: menuOpen }" x-cloak>
     <div class="drawer-head">
       <span class="brand">🍲 Menu</span>
-      <button class="iconbtn" @click="menuOpen = false" title="Close">
+      <button class="iconbtn" @click="menuOpen = false" title="Close" aria-label="Close menu">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
       </button>
     </div>
