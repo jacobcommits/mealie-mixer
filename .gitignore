@@ -18,6 +18,7 @@ eggpaste.json
 
 # Internal docs — local-only, never publish (infra + planning notes). README.md is public.
 HANDOFF.md
+WORKFLOW.md
 CLAUDE.md
 ROADMAP.md
 PLAN.md
