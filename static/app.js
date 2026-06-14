@@ -18,7 +18,7 @@ function mixer() {
     aiTest: { ok: false, msg: '' },
     genKeyMsg: '', cfgMsg: '',
     // recipe input
-    fileList: null, url: '', pastedText: '', language: 'English', prompt: '',
+    fileList: null, url: '', pastedText: '', language: 'English', unitsSystem: 'metric', prompt: '',
     recording: false, audioBlob: null, audioUrl: '', recElapsed: 0, audioProgress: 0,   // voice note (B3)
     // review
     recipe: emptyRecipe(), instructionsText: '', queue: [],
@@ -37,6 +37,7 @@ function mixer() {
     // ── gate / auth ─────────────────────────────────────────────────────
     async init() {
       try { this.language = localStorage.getItem('mm-lang') || this.language; } catch (_) {}
+      try { this.unitsSystem = localStorage.getItem('mm-units') || this.unitsSystem; } catch (_) {}
       try { this.cfgInfo = await getJSON('/api/config'); }
       catch (_) { this.error = 'Could not reach the server.'; }
       if (!this.cfgInfo.configured) { this.prefillCfg(); this.view = 'setup'; return; }
@@ -180,7 +181,7 @@ function mixer() {
       // synchronously (the backend merges all provided sources into one recipe).
       if (this.audioBlob) { return this.extractJob(); }
       this.loadingMsg = 'Reading your recipe…'; this.loading = true;
-      try { localStorage.setItem('mm-lang', this.language); } catch (_) {}   // remember for next time / share flow
+      try { localStorage.setItem('mm-lang', this.language); localStorage.setItem('mm-units', this.unitsSystem); } catch (_) {}   // remember for next time / share flow
       this.clearSourceImages();
       if (this.fileList && this.fileList.length) this.sourceImages = [...this.fileList].filter(f => (f.type || '').startsWith('image/')).map(f => URL.createObjectURL(f));
       try {
@@ -188,7 +189,7 @@ function mixer() {
         if (this.fileList && this.fileList.length) { for (const f of this.fileList) fd.append('files', f); }
         if (this.url.trim()) { fd.append('url', this.url.trim()); }
         if (this.pastedText.trim()) { fd.append('text', this.pastedText.trim()); }
-        fd.append('language', this.language); fd.append('prompt', this.prompt || '');
+        fd.append('language', this.language); fd.append('prompt', this.prompt || ''); fd.append('units_system', this.unitsSystem);
         const r = await fetch('/api/extract', { method: 'POST', body: fd, credentials: 'same-origin' });
         if (!r.ok) throw new Error(await detail(r));
         const recipes = (await r.json()).recipes || [];
@@ -203,7 +204,7 @@ function mixer() {
     async extractJob() {
       this.error = ''; this.audioProgress = 0;
       this.loadingMsg = 'Working…'; this.loading = true;
-      try { localStorage.setItem('mm-lang', this.language); } catch (_) {}
+      try { localStorage.setItem('mm-lang', this.language); localStorage.setItem('mm-units', this.unitsSystem); } catch (_) {}
       this.clearSourceImages();
       if (this.fileList && this.fileList.length) this.sourceImages = [...this.fileList].filter(f => (f.type || '').startsWith('image/')).map(f => URL.createObjectURL(f));
       try {
@@ -212,7 +213,7 @@ function mixer() {
         if (this.url.trim()) { fd.append('url', this.url.trim()); }
         if (this.pastedText.trim()) { fd.append('text', this.pastedText.trim()); }
         if (this.audioBlob) { fd.append('audio', this.audioBlob, 'note.webm'); }
-        fd.append('language', this.language); fd.append('prompt', this.prompt || '');
+        fd.append('language', this.language); fd.append('prompt', this.prompt || ''); fd.append('units_system', this.unitsSystem);
         const r = await fetch('/api/extract/job', { method: 'POST', body: fd, credentials: 'same-origin' });
         if (!r.ok) throw new Error(await detail(r));
         this._extractJob = (await r.json()).job_id;
@@ -263,7 +264,63 @@ function mixer() {
         this.recording = true; this.recElapsed = 0;
         const t0 = Date.now();
         this._recTimer = setInterval(() => this.recElapsed = Math.floor((Date.now() - t0) / 1000), 250);
+
+        // Start waveform visualizer
+        setTimeout(() => {
+          try { this.visualize(stream); } catch (_) {}
+        }, 100);
       } catch (_) { this.error = 'Microphone unavailable or permission denied.'; }
+    },
+    visualize(stream) {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 32;
+      source.connect(analyser);
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      
+      const canvas = document.getElementById('waveCanvas');
+      if (!canvas) return;
+      const canvasCtx = canvas.getContext('2d');
+      
+      const draw = () => {
+        if (!this.recording) {
+          canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+          try { audioCtx.close(); } catch (_) {}
+          return;
+        }
+        requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(dataArray);
+        
+        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const barWidth = (canvas.width / bufferLength) * 1.6;
+        let barHeight;
+        let x = 0;
+        
+        for (let i = 0; i < bufferLength; i++) {
+          barHeight = (dataArray[i] / 255) * canvas.height * 0.9;
+          if (barHeight < 3) barHeight = 3;
+          
+          const grad = canvasCtx.createLinearGradient(0, canvas.height, 0, 0);
+          grad.addColorStop(0, '#f97316');
+          grad.addColorStop(1, '#fdba74');
+          canvasCtx.fillStyle = grad;
+          
+          const y = (canvas.height - barHeight) / 2;
+          canvasCtx.beginPath();
+          if (canvasCtx.roundRect) {
+            canvasCtx.roundRect(x, y, barWidth - 3, barHeight, 3);
+          } else {
+            canvasCtx.rect(x, y, barWidth - 3, barHeight);
+          }
+          canvasCtx.fill();
+          
+          x += barWidth;
+        }
+      };
+      draw();
     },
     pickAudio(e) {
       const f = e.target.files && e.target.files[0]; e.target.value = '';
@@ -305,6 +362,14 @@ function mixer() {
       this.saveSession();
     },
     addIngredient() { this.recipe.ingredients.push({ quantity: '', unit: '', food: '', note: '', title: '' }); },
+    moveIngredient(from, to) {
+      if (from === to || from == null || to == null) return;
+      const items = [...this.recipe.ingredients];
+      const [moved] = items.splice(from, 1);
+      items.splice(to, 0, moved);
+      this.recipe.ingredients = items;
+      this.saveSession();
+    },
     addNote() { (this.recipe.notes ||= []).push({ title: '', text: '' }); },
     removeNote(i) { this.recipe.notes.splice(i, 1); },
     addCategory(name) {
@@ -332,6 +397,16 @@ function mixer() {
       const raw = (name || '').trim(); if (!raw) return '';
       if (this.foods.some(f => f.toLowerCase() === raw.toLowerCase())) return 'exists';
       return this.nearestFood(raw) ? 'near' : 'new';
+    },
+    filteredFoods(q) {
+      const query = (q || '').trim().toLowerCase();
+      if (!query) return [];
+      return this.foods.filter(f => f.toLowerCase().includes(query)).slice(0, 8);
+    },
+    filteredCategories(q) {
+      const query = (q || '').trim().toLowerCase();
+      if (!query) return [];
+      return this.categories.filter(c => c.toLowerCase().includes(query)).slice(0, 8);
     },
     alreadyImported() {
       // non-blocking dedupe: does the entered URL match something already imported?
@@ -467,7 +542,7 @@ function mixer() {
     async restandardize(slug) {
       this.error = ''; this.loadingMsg = 'Re-standardizing…'; this.loading = true;
       try {
-        const r = await api('/api/restandardize', { method: 'POST', body: JSON.stringify({ slug, language: this.language }) });
+        const r = await api('/api/restandardize', { method: 'POST', body: JSON.stringify({ slug, language: this.language, units_system: this.unitsSystem }) });
         if (!r.ok) throw new Error(await detail(r));
         const data = await r.json();
         this.updateMode = data.slug;   // signals review to use the update endpoint
@@ -540,7 +615,7 @@ function mixer() {
       if (!chosen.length) { this.error = 'Select at least one recipe.'; return; }
       this.error = ''; this.loading = true; this.loadingMsg = 'Starting…';
       try {
-        const body = { recipes: chosen.map(r => ({ text: r.text, image: r.image, title: r.title })), language: this.language };
+        const body = { recipes: chosen.map(r => ({ text: r.text, image: r.image, title: r.title })), language: this.language, units_system: this.unitsSystem };
         const r = await api('/api/cookbook/job', { method: 'POST', body: JSON.stringify(body) });
         if (!r.ok) throw new Error(await detail(r));
         const { job_id } = await r.json();

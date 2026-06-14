@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0f172a" />
+  <meta name="theme-color" content="#060608" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" type="image/png" href="/icons/favicon.png" />
   <link rel="apple-touch-icon" href="/icons/icon-180.png" />
@@ -16,28 +16,37 @@
 <div id="app" x-data="mixer()" x-init="init()" x-cloak>
 
   <header class="topbar">
-    <button class="brand brandbtn" @click="goHome()" title="Home"><img src="/icons/brand.png" class="brandlogo" alt="" />Mealie&nbsp;Mixer</button>
+    <button class="brand brandbtn" @click="goHome()" title="Home">
+      <img src="/icons/brand.png" class="brandlogo" alt="" />
+      <span>Mealie Mixer</span>
+    </button>
     <button class="iconbtn" x-show="['input','review','done','history','settings','cookbook-upload','cookbook','cookbook-progress','cookbook-review','fix'].includes(view)"
-            @click="menuOpen = true" title="Menu">☰</button>
+            @click="menuOpen = true" title="Menu">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"></line><line x1="4" x2="20" y1="6" y2="6"></line><line x1="4" x2="20" y1="18" y2="18"></line></svg>
+    </button>
   </header>
 
   <main class="wrap">
 
     <!-- cookbook job banner (close & come back) -->
-    <button class="cbbanner" x-show="cookbookJob && !['cookbook-progress','cookbook-review'].includes(view)" x-cloak
-            @click="openCookbookJob()"
-            x-text="cookbookJob && cookbookJob.status === 'done'
-              ? ('📚 Cookbook ready — ' + (cookbookJob.total - cookbookJob.failed) + ' to review →')
-              : ('📚 Cookbook processing… ' + (cookbookJob ? cookbookJob.done : 0) + ' / ' + (cookbookJob ? cookbookJob.total : 0))"></button>
+    <button class="cbbanner fade-in" x-show="cookbookJob && !['cookbook-progress','cookbook-review'].includes(view)" x-cloak
+            @click="openCookbookJob()">
+      <span x-text="cookbookJob && cookbookJob.status === 'done'
+        ? ('📚 Cookbook ready — ' + (cookbookJob.total - cookbookJob.failed) + ' to review')
+        : ('📚 Cookbook processing… ' + (cookbookJob ? cookbookJob.done : 0) + ' / ' + (cookbookJob ? cookbookJob.total : 0))"></span>
+    </button>
 
     <!-- gate / loading -->
     <template x-if="view === 'gate'">
-      <div class="center muted"><div class="spinner"></div><p>Loading…</p></div>
+      <div class="center muted fade-in">
+        <div class="spinner big"></div>
+        <p style="font-family: 'Outfit', sans-serif; font-weight: 500; margin-top: 10px;">Loading Mixer…</p>
+      </div>
     </template>
 
     <!-- login -->
     <template x-if="view === 'login'">
-      <div class="card">
+      <div class="card fade-in">
         <h2>Sign in</h2>
         <input class="input" type="text" placeholder="Username" x-model="loginUser" @keydown.enter="doLogin()" />
         <input class="input" type="password" placeholder="Password" x-model="loginPass" @keydown.enter="doLogin()" />
@@ -48,55 +57,57 @@
 
     <!-- setup / settings (shared config form) -->
     <template x-if="view === 'setup' || view === 'settings'">
-      <div class="card">
+      <div class="card fade-in">
         <h2 x-text="view === 'setup' ? 'First-time setup' : 'Settings'"></h2>
         <p class="muted small" x-show="view === 'setup'">Enter your Mealie + AI details to get started.</p>
 
-        <h3>Mealie</h3>
+        <h3>Mealie Connection</h3>
         <input class="input" type="text" placeholder="Mealie URL (http://host:9925)" x-model="cfg.mealie_url" />
-        <small class="warn" x-show="pinned('MEALIE_URL')">⚠ set by an env var — Settings won't change it</small>
-        <input class="input" type="password" x-model="cfg.mealie_token"
-               :placeholder="secretPh('MEALIE')" />
-        <small class="warn" x-show="pinned('MEALIE_TOKEN')">⚠ token set by an env var</small>
+        <small class="warn" x-show="pinned('MEALIE_URL')">⚠ Pinned by env var — settings won't change it</small>
+        <input class="input" type="password" x-model="cfg.mealie_token" :placeholder="secretPh('MEALIE')" />
+        <small class="warn" x-show="pinned('MEALIE_TOKEN')">⚠ Token pinned by env var</small>
         <button class="btn ghost sm" @click="testMealie()">Test Mealie</button>
         <small :class="mealieTest.ok ? 'ok' : 'err'" x-text="mealieTest.msg"></small>
 
-        <h3>AI backend</h3>
+        <h3>AI Backend</h3>
         <input class="input" type="password" x-model="cfg.ai_key" :placeholder="secretPh('AI')" />
-        <small class="warn" x-show="pinned('AI_API_KEY')">⚠ AI key set by an env var</small>
-        <input class="input" type="text" placeholder="AI base URL" x-model="cfg.ai_base" />
-        <input class="input" type="text" placeholder="AI model" x-model="cfg.ai_model" />
-        <input class="input" type="number" min="0" placeholder="AI requests/min limit (0 or blank = no limit)" x-model="cfg.ai_rpm" />
-        <small class="muted small">Caps how fast bulk imports (e.g. a cookbook) call the AI — set it below your provider's per-minute limit if you hit rate errors.</small>
-        <small class="warn" x-show="pinned('AI_RPM_LIMIT')">⚠ rate limit set by an env var</small>
+        <small class="warn" x-show="pinned('AI_API_KEY')">⚠ AI API key pinned by env var</small>
+        <input class="input" type="text" placeholder="AI Base URL" x-model="cfg.ai_base" />
+        <input class="input" type="text" placeholder="AI Model" x-model="cfg.ai_model" />
+        <input class="input" type="number" min="0" placeholder="AI RPM Limit (0 or blank = no limit)" x-model="cfg.ai_rpm" />
+        <small class="muted small">Caps how fast bulk imports (e.g. cookbooks) call the AI. Reduce if you get provider rate limit errors.</small>
+        <small class="warn" x-show="pinned('AI_RPM_LIMIT')">⚠ RPM Limit pinned by env var</small>
         <button class="btn ghost sm" @click="testAi()">Test AI (≈1 token)</button>
         <small :class="aiTest.ok ? 'ok' : 'err'" x-text="aiTest.msg"></small>
 
-        <h3>Login (optional)</h3>
-        <input class="input" type="text" placeholder="Username (blank = no login)" x-model="cfg.auth_user" />
-        <input class="input" type="password" placeholder="Password (blank = keep)" x-model="cfg.auth_pass" />
+        <h3>Login (Optional)</h3>
+        <input class="input" type="text" placeholder="Username (leave blank for no login)" x-model="cfg.auth_user" />
+        <input class="input" type="password" placeholder="Password (leave blank to keep current)" x-model="cfg.auth_pass" />
 
-        <h3>Agent API key (optional)</h3>
+        <h3>Agent API Key (Optional)</h3>
         <input class="input" type="password" x-model="cfg.api_key" :placeholder="secretPh('MIXER_API')" />
-        <small class="warn" x-show="pinned('MIXER_API_KEY')">⚠ API key set by an env var</small>
+        <small class="warn" x-show="pinned('MIXER_API_KEY')">⚠ API key pinned by env var</small>
         <button class="btn ghost sm" @click="genKey()">🎲 Generate key</button>
         <small class="mono" x-show="genKeyMsg" x-text="genKeyMsg"></small>
 
         <template x-if="view === 'settings'">
           <div>
-            <h3>Voice notes</h3>
-            <small class="ok" x-show="cfgInfo.voice">🎤 Enabled in this build — record or upload a voice note on the import screen.</small>
-            <small class="muted small" x-show="!cfgInfo.voice">Not included in this build (it pulls in a large local transcription model). To turn it on, rebuild the image with <span class="mono">WITH_VOICE=1</span> — e.g. <span class="mono">WITH_VOICE=1 docker compose build</span> (Docker), or <span class="mono">--build-arg WITH_VOICE=1</span> (Podman). The 🎤 controls appear automatically once it's built in.</small>
+            <h3>Voice Transcription</h3>
+            <small class="ok" x-show="cfgInfo.voice">🎤 Transcription enabled in this build — record or upload audio notes directly.</small>
+            <small class="muted small" x-show="!cfgInfo.voice">Not included in this build (requires Whisper model files). Build with <span class="mono">WITH_VOICE=1</span> to enable voice features.</small>
           </div>
         </template>
 
         <button class="btn primary" :disabled="loading" @click="saveConfig()"
-                x-text="view === 'setup' ? 'Save & start' : 'Save settings'"></button>
+                x-text="view === 'setup' ? 'Save & Start' : 'Save Settings'"></button>
         <p class="muted small" x-show="cfgMsg" x-text="cfgMsg"></p>
         <p class="err" x-show="error" x-text="error"></p>
 
-        <div class="row" x-show="view === 'settings'">
-          <button class="btn ghost" @click="afterAuth()">← Back</button>
+        <div class="row" x-show="view === 'settings'" style="margin-top: 8px;">
+          <button class="btn ghost" @click="afterAuth()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            <span>Back</span>
+          </button>
           <button class="btn ghost" x-show="cfgInfo.login_required" @click="logout()">Log out</button>
         </div>
       </div>
@@ -104,144 +115,281 @@
 
     <!-- input -->
     <template x-if="view === 'input'">
-      <div class="card">
+      <div class="card fade-in">
         <h2>Add a recipe</h2>
-        <p class="muted small">Add one source or several — a link, photo(s), text, a voice note or video — and we'll merge them into one recipe.</p>
-        <p class="muted small">📚 Whole cookbook or a multi-recipe PDF? <button type="button" class="linkbtn" @click="openCookbook()">Use Cookbook import</button> (in the ☰ menu) for much better results.</p>
+        <p class="muted small">Add one source or several — a link, recipe images, text, or a voice/video recording — and we'll merge them into one clean recipe.</p>
+        <p class="muted small">📚 Importing a whole cookbook? <button type="button" class="linkbtn" @click="openCookbook()">Use Cookbook import</button> in the menu for much better results.</p>
+        
         <label class="filezone">
           <input type="file" accept="image/*,.pdf,.md,.markdown,.txt,.eml" multiple
                  @change="fileList = $event.target.files" />
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" x2="12" y1="3" y2="15"></line></svg>
           <span x-text="fileList && fileList.length
                   ? (fileList.length + ' file(s) selected')
-                  : '📷 Photo, screenshot(s), or a PDF / .md / .txt / .eml'"></span>
+                  : 'Drop recipe screenshot(s), photos, or documents here'"></span>
         </label>
-        <div class="or">— and / or —</div>
-        <input class="input" type="url" placeholder="paste a recipe link" x-model="url" />
+        
+        <div class="or">and / or</div>
+        
+        <div style="position: relative; display: flex; align-items: center;">
+          <span style="position: absolute; left: 14px; color: var(--muted-dark);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          </span>
+          <input class="input" type="url" placeholder="Paste a recipe link" x-model="url" style="padding-left: 42px;" />
+        </div>
         <small class="warn" x-show="importedNote()" x-text="importedNote()"></small>
-        <small class="muted small" x-show="socialUrl()">ℹ We'll read the post's caption. If the steps are only spoken in the video, screenshot the post, or add a screen-recording below to transcribe the voice-over.</small>
-        <div class="or">— and / or —</div>
-        <textarea class="input" rows="4" placeholder="…or paste recipe text" x-model="pastedText"></textarea>
+        <small class="muted small" x-show="socialUrl()">ℹ We'll read the post's caption. If instructions are only spoken, record or upload a video clip below.</small>
+        
+        <div class="or">and / or</div>
+        
+        <textarea class="input" rows="4" placeholder="Paste raw recipe text" x-model="pastedText"></textarea>
+        
         <template x-if="cfgInfo.voice">
           <div class="voicebox">
-            <div class="or">— and / or —</div>
-            <div class="row">
-              <button type="button" class="btn ghost" :class="{ recpulse: recording }" @click="toggleRecord()"
-                      x-text="recording ? ('⏹ Stop · ' + recClock()) : '🎤 Record a voice note'"></button>
-              <label class="btn ghost filebtn">📁 Upload audio/video
+            <div class="or">and / or</div>
+            <div class="row" style="align-items: center; gap: 14px;">
+              <button type="button" class="btn ghost" :class="{ recpulse: recording }" @click="toggleRecord()" style="flex: none;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
+                <span x-text="recording ? ('Stop · ' + recClock()) : 'Record voice note'"></span>
+              </button>
+              
+              <!-- HTML5 Audio visualizer canvas (B12: Waveform) -->
+              <canvas id="waveCanvas" width="130" height="42" x-show="recording" style="background: transparent; border-radius: 6px; flex: none;"></canvas>
+              
+              <label class="btn ghost filebtn" style="flex: 1;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+                <span>Upload audio/video</span>
                 <input type="file" accept="audio/*,video/*" @change="pickAudio($event)" />
               </label>
             </div>
             <div class="audiorow" x-show="audioBlob && !recording">
               <audio class="audioprev" :src="audioUrl" controls></audio>
-              <button type="button" class="x" @click="clearAudio()" title="remove">✕</button>
+              <button type="button" class="x" @click="clearAudio()" title="remove">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
+              </button>
             </div>
-            <small class="muted small">Read the recipe aloud, or upload a screen-recording of a reel — we'll transcribe the voice-over (steps) and pair it with the caption/link for the ingredients.</small>
+            <small class="muted small">Dictate steps aloud or upload a screen-recording. We'll transcribe the audio and pair it with any caption/ingredients.</small>
           </div>
         </template>
+        
         <div class="row">
-          <select class="input" x-model="language">
-            <template x-for="l in languages" :key="l"><option x-text="l"></option></template>
-          </select>
-          <input class="input" type="text" placeholder="extra note (optional)" x-model="prompt" />
+          <div class="field">
+            <span>Target Language</span>
+            <select class="input" x-model="language">
+              <template x-for="l in languages" :key="l"><option x-text="l"></option></template>
+            </select>
+          </div>
+          <div class="field" style="max-width: 160px">
+            <span>Measurement System</span>
+            <select class="input" x-model="unitsSystem">
+              <option value="metric">Metric / °C</option>
+              <option value="imperial">Imperial / °F</option>
+            </select>
+          </div>
         </div>
+        
+        <div class="row" style="margin-top: 4px;">
+          <div class="field">
+            <span>Extra prompt note (Optional)</span>
+            <input class="input" type="text" placeholder="e.g. 'exclude mushrooms', 'split steps into 3 phases'" x-model="prompt" />
+          </div>
+        </div>
+        
         <button class="btn primary" :disabled="loading || (!fileList?.length && !url.trim() && !pastedText.trim() && !audioBlob)"
                 @click="extract()">Make recipe</button>
         <p class="err" x-show="error" x-text="error"></p>
       </div>
     </template>
 
-    <!-- review / edit -->
+    <!-- review / edit (B12: desktop split pane layout support) -->
     <template x-if="view === 'review'">
-      <div class="card" @input.debounce.400ms="saveSession()">
-        <p class="muted small" x-show="queue.length" x-text="queue.length + ' more queued'"></p>
-        <img class="hero" x-show="photoPreview || recipe.image_url" :src="photoPreview || recipe.image_url" alt="" />
-        <div class="photorow">
-          <label class="photopick">
-            <input type="file" accept="image/*" @change="pickPhoto($event)" />
-            <span x-text="(photoFile || recipe.image_url) ? '📷 Tap to change the photo' : '📷 Add a dish photo (optional)'"></span>
-          </label>
-          <button class="x" x-show="photoFile || recipe.image_url" @click="removePhoto()" title="remove photo">✕</button>
+      <div class="review-split fade-in" :class="{ 'has-image': photoPreview || recipe.image_url || sourceImages.length }" @input.debounce.400ms="saveSession()">
+        
+        <!-- Left Side Pane: Pinned image context -->
+        <div class="review-left" x-show="photoPreview || recipe.image_url || sourceImages.length">
+          <div class="card">
+            <h2>Source Image</h2>
+            <p class="muted small">Original dish photo and source screenshots context.</p>
+            <img class="hero" x-show="photoPreview || recipe.image_url" :src="photoPreview || recipe.image_url" alt="" style="max-height: 340px; object-fit: contain; background: #000;" />
+            <div class="photorow">
+              <label class="photopick">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                <input type="file" accept="image/*" @change="pickPhoto($event)" />
+                <span x-text="(photoFile || recipe.image_url) ? 'Tap to change the recipe photo' : 'Add recipe photo (optional)'"></span>
+              </label>
+              <button class="x" x-show="photoFile || recipe.image_url" @click="removePhoto()" title="remove photo">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
+              </button>
+            </div>
+            <small class="warn" x-show="autoPhotoWarn()">⚠ Thumbnail grabbed automatically from post — remove if it's not the dish.</small>
+            
+            <template x-if="sourceImages.length">
+              <div class="sourcebox">
+                <p class="muted small" style="font-weight: 600;">Screenshots (click to zoom)</p>
+                <div class="sourcestrip">
+                  <template x-for="(s, i) in sourceImages" :key="i">
+                    <img class="sourcethumb" :src="s" @click="zoomSrc = s" alt="source image" />
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
         </div>
-        <small class="warn" x-show="autoPhotoWarn()">⚠ Auto-grabbed from the post — check it's the dish, or remove it.</small>
-        <template x-if="sourceImages.length">
-          <div class="sourcebox">
-            <p class="muted small">Source screenshot — tap to zoom &amp; compare</p>
-            <div class="sourcestrip">
-              <template x-for="(s, i) in sourceImages" :key="i">
-                <img class="sourcethumb" :src="s" @click="zoomSrc = s" alt="source" />
+        
+        <!-- Right Side Pane: Full Recipe Form -->
+        <div class="review-right">
+          <div class="card">
+            <h2>Review Recipe</h2>
+            <p class="muted small" x-show="queue.length" x-text="queue.length + ' more queued in batch'"></p>
+
+            <input class="input title" placeholder="Recipe Name" x-model="recipe.name" />
+            <small class="warn" x-show="nameExists()">⚠ A recipe with this name already exists in Mealie — saving will create a separate copy.</small>
+            
+            <textarea class="input" rows="2" placeholder="Short description / subtitle" x-model="recipe.description"></textarea>
+            
+            <div class="row">
+              <label class="field"><span>Servings</span>
+                <input class="input" type="number" min="0" x-model="recipe.servings" /></label>
+              <label class="field"><span>Yield / Quantity</span>
+                <input class="input" type="text" x-model="recipe.yield" /></label>
+            </div>
+
+            <h3>Categories</h3>
+            <div class="chips">
+              <template x-for="(c, i) in recipe.categories" :key="i">
+                <span class="chip">
+                  <span x-text="c"></span>
+                  <button class="cx" @click="removeCategory(i)" title="remove">✕</button>
+                </span>
               </template>
             </div>
+            
+            <!-- Category Autocomplete Custom Combobox -->
+            <div class="combobox-wrapper" x-data="{ open: false, activeIndex: -1 }" @click.away="open = false">
+              <input class="input" type="text" placeholder="Type category to add…"
+                     x-model="categoryInput"
+                     @focus="open = true; activeIndex = -1"
+                     @keydown.escape="open = false"
+                     @keydown.arrow-down.prevent="open = true; activeIndex = Math.min(activeIndex + 1, filteredCategories(categoryInput).length - 1)"
+                     @keydown.arrow-up.prevent="activeIndex = Math.max(activeIndex - 1, -1)"
+                     @keydown.enter.prevent="if (activeIndex >= 0) { categoryInput = filteredCategories(categoryInput)[activeIndex]; } addCategory(); open = false;" />
+              
+              <div class="combobox-options" x-show="open && filteredCategories(categoryInput).length" x-cloak>
+                <template x-for="(c, idx) in filteredCategories(categoryInput)" :key="c">
+                  <div class="combobox-option"
+                       :class="{ 'active': activeIndex === idx }"
+                       @click="categoryInput = c; addCategory(); open = false;"
+                       x-text="c"></div>
+                </template>
+              </div>
+            </div>
+
+            <h3>Ingredients</h3>
+            <div class="ings">
+              <template x-for="(ing, i) in recipe.ingredients" :key="i">
+                <div class="ingwrap">
+
+                  <input class="input section" x-show="ing.title" placeholder="Section Heading (e.g. For Salad)" x-model="ing.title" />
+                  
+                  <div class="ing">
+                    <input class="input qty" placeholder="qty" x-model="ing.quantity" />
+                    <input class="input unit" placeholder="unit" x-model="ing.unit" />
+                    
+                    <!-- Food Autocomplete Custom Combobox -->
+                    <div class="combobox-wrapper" x-data="{ open: false, activeIndex: -1 }" @click.away="open = false">
+                      <input class="input food" placeholder="food name" x-model="ing.food"
+                             @focus="open = true; activeIndex = -1"
+                             @keydown.escape="open = false"
+                             @keydown.arrow-down.prevent="open = true; activeIndex = Math.min(activeIndex + 1, filteredFoods(ing.food).length - 1)"
+                             @keydown.arrow-up.prevent="activeIndex = Math.max(activeIndex - 1, -1)"
+                             @keydown.enter.prevent="if (activeIndex >= 0) { ing.food = filteredFoods(ing.food)[activeIndex]; } open = false;"
+                             :class="ing.food && ing.food.trim() ? 'fs-' + foodStatus(ing.food) : ''"
+                             :title="{exists:'Matched in Mealie',near:'Near-match in Mealie',new:'New food — will be created'}[foodStatus(ing.food)] || ''" />
+                      
+                      <div class="combobox-options" x-show="open && filteredFoods(ing.food).length" x-cloak>
+                        <template x-for="(f, idx) in filteredFoods(ing.food)" :key="f">
+                          <div class="combobox-option"
+                               :class="{ 'active': activeIndex === idx }"
+                               @click="ing.food = f; open = false;"
+                               x-text="f"></div>
+                        </template>
+                      </div>
+                    </div>
+
+                    <input class="input note" placeholder="notes (e.g. chopped)" x-model="ing.note" />
+                    <button class="x" @click="recipe.ingredients.splice(i,1)" title="remove row">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
+                    </button>
+                  </div>
+                  
+                  <div class="rowactions">
+                    <!-- Reorder buttons (work on touch + desktop, unlike native drag) -->
+                    <div class="reorder">
+                      <button type="button" class="movebtn" title="Move up" :disabled="i === 0"
+                              @click="moveIngredient(i, i - 1)">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                      </button>
+                      <button type="button" class="movebtn" title="Move down" :disabled="i === recipe.ingredients.length - 1"
+                              @click="moveIngredient(i, i + 1)">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                      </button>
+                    </div>
+                    <button class="foodhint" type="button" x-show="nearestFood(ing.food)"
+                            @click="ing.food = nearestFood(ing.food)"
+                            x-text="'↳ Matched food: ' + nearestFood(ing.food) + '?'"></button>
+                    <button class="foodhint" type="button" x-show="!ing.title"
+                            @click="ing.title = 'Section'">§ Section heading</button>
+                  </div>
+                </div>
+              </template>
+            </div>
+            <button class="btn ghost sm" @click="addIngredient()">+ Add ingredient</button>
+            <div class="legend" style="margin-top: 6px;">
+              <span><span style="color: var(--ok)">●</span> In Mealie</span>
+              <span><span style="color: var(--warning)">●</span> Near-match</span>
+              <span><span style="color: #3b82f6">●</span> New food</span>
+            </div>
+
+            <h3>Instructions</h3>
+            <textarea class="input" rows="7" placeholder="Add preparation steps — one step per line" x-model="instructionsText"></textarea>
+
+            <h3>Notes</h3>
+            <div class="notes">
+              <template x-for="(n, i) in recipe.notes" :key="i">
+                <div class="notewrap">
+                  <div class="noterow">
+                    <input class="input" placeholder="Note Title (Optional)" x-model="n.title" />
+                    <button class="x" @click="removeNote(i)" title="remove">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
+                    </button>
+                  </div>
+                  <textarea class="input" rows="2" placeholder="Tip content (e.g. storage directions, substitution suggestions)" x-model="n.text"></textarea>
+                </div>
+              </template>
+            </div>
+            <button class="btn ghost sm" @click="addNote()">+ Add note</button>
+
+            <small class="warn" x-show="updateMode">⚠ Saving changes will overwrite the existing recipe directly in Mealie.</small>
+            <p class="err" x-show="error" x-text="error"></p>
           </div>
-        </template>
-        <input class="input title" placeholder="Recipe name" x-model="recipe.name" />
-        <small class="warn" x-show="nameExists()">⚠ A recipe with this name already exists in Mealie — pushing makes a separate copy.</small>
-        <textarea class="input" rows="2" placeholder="Description" x-model="recipe.description"></textarea>
-        <div class="row">
-          <label class="field"><span>Servings</span>
-            <input class="input" type="number" min="0" x-model="recipe.servings" /></label>
-          <label class="field"><span>Yield</span>
-            <input class="input" type="text" x-model="recipe.yield" /></label>
         </div>
-        <h3>Categories</h3>
-        <div class="chips">
-          <template x-for="(c, i) in recipe.categories" :key="i">
-            <span class="chip"><span x-text="c"></span><button class="cx" @click="removeCategory(i)" title="remove">✕</button></span>
-          </template>
-        </div>
-        <input class="input" type="text" placeholder="add a category" list="categories-list"
-               x-model="categoryInput" @change="addCategory()" @keydown.enter.prevent="addCategory()" />
-        <h3>Ingredients</h3>
-        <div class="ings">
-          <template x-for="(ing, i) in recipe.ingredients" :key="i">
-            <div class="ingwrap">
-              <input class="input section" x-show="ing.title" placeholder="section heading" x-model="ing.title" />
-              <div class="ing">
-                <input class="input qty" placeholder="qty" x-model="ing.quantity" />
-                <input class="input unit" placeholder="unit" x-model="ing.unit" />
-                <input class="input food" placeholder="food" list="foods-list" x-model="ing.food"
-                       :class="ing.food &amp;&amp; ing.food.trim() ? 'fs-' + foodStatus(ing.food) : ''"
-                       :title="{exists:'Already in Mealie',near:'Near-match exists in Mealie',new:'New — will be created'}[foodStatus(ing.food)] || ''" />
-                <input class="input note" placeholder="note" x-model="ing.note" />
-                <button class="x" @click="recipe.ingredients.splice(i,1)" title="remove">✕</button>
-              </div>
-              <div class="rowactions">
-                <button class="foodhint" type="button" x-show="nearestFood(ing.food)"
-                        @click="ing.food = nearestFood(ing.food)"
-                        x-text="'↳ use ' + nearestFood(ing.food) + ' instead?'"></button>
-                <button class="foodhint" type="button" x-show="!ing.title"
-                        @click="ing.title = 'Section'">§ section</button>
-              </div>
-            </div>
-          </template>
-        </div>
-        <button class="btn ghost" @click="addIngredient()">+ add ingredient</button>
-        <p class="legend">🟢 in Mealie · 🟡 near-match · 🔵 new food</p>
-        <h3>Instructions</h3>
-        <textarea class="input" rows="7" placeholder="one step per line" x-model="instructionsText"></textarea>
-        <h3>Notes</h3>
-        <div class="notes">
-          <template x-for="(n, i) in recipe.notes" :key="i">
-            <div class="notewrap">
-              <div class="noterow">
-                <input class="input" placeholder="note title (optional)" x-model="n.title" />
-                <button class="x" @click="removeNote(i)" title="remove">✕</button>
-              </div>
-              <textarea class="input" rows="2" placeholder="tip — storage, substitutions, make-ahead…" x-model="n.text"></textarea>
-            </div>
-          </template>
-        </div>
-        <button class="btn ghost" @click="addNote()">+ add note</button>
-        <small class="warn" x-show="updateMode">⚠ This will overwrite the existing recipe in Mealie. Review carefully before saving.</small>
-        <p class="err" x-show="error" x-text="error"></p>
+
       </div>
     </template>
 
     <!-- fix existing recipe (B9) -->
     <template x-if="view === 'fix'">
-      <div class="card">
+      <div class="card fade-in">
         <h2>🔧 Fix existing recipe</h2>
-        <p class="muted small">Pick a recipe from Mealie — the AI will clean up its ingredients, translate, convert to metric, and re-structure it. You'll review before saving.</p>
-        <input class="input" type="text" placeholder="🔍 Search recipes…" x-model="fixSearch" />
+        <p class="muted small">Search recipes in your Mealie collection. Mixer will run its ingredient parsing, metric translations, and cleanup pipeline on it. You can review changes before saving.</p>
+        
+        <div style="position: relative; display: flex; align-items: center;">
+          <span style="position: absolute; left: 14px; color: var(--muted-dark);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" x2="16.65" y1="21" y2="16.65"></line></svg>
+          </span>
+          <input class="input" type="text" placeholder="Search Mealie recipes…" x-model="fixSearch" style="padding-left: 42px;" />
+        </div>
+
         <div class="fixlist">
           <template x-for="(r, i) in fixFiltered()" :key="r.slug">
             <button class="fixrow" @click="restandardize(r.slug)">
@@ -249,40 +397,59 @@
               <span class="fixarrow">→</span>
             </button>
           </template>
-          <p class="muted small" x-show="!fixFiltered().length && fixSearch.trim()">No recipes match.</p>
-          <p class="muted small" x-show="!mealieRecipes.length">No recipes in Mealie yet.</p>
+          <p class="muted small" x-show="!fixFiltered().length && fixSearch.trim()">No recipes match search criteria.</p>
+          <p class="muted small" x-show="!mealieRecipes.length">No recipes loaded from Mealie.</p>
         </div>
+
         <div class="row">
-          <select class="input" x-model="language" style="max-width: 160px">
-            <template x-for="l in languages" :key="l"><option x-text="l"></option></template>
-          </select>
-          <small class="muted">Output language</small>
+          <div class="field">
+            <span>Target Language</span>
+            <select class="input" x-model="language">
+              <template x-for="l in languages" :key="l"><option x-text="l"></option></template>
+            </select>
+          </div>
+          <div class="field">
+            <span>Units System</span>
+            <select class="input" x-model="unitsSystem">
+              <option value="metric">Metric / °C</option>
+              <option value="imperial">Imperial / °F</option>
+            </select>
+          </div>
         </div>
+
         <p class="err" x-show="error" x-text="error"></p>
-        <button class="btn ghost" @click="view = 'input'">← Back</button>
+        <button class="btn ghost sm" @click="view = 'input'" style="margin-top: 8px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          <span>Back</span>
+        </button>
       </div>
     </template>
 
     <!-- done -->
     <template x-if="view === 'done'">
-      <div class="card center">
-        <div class="big">✅</div>
-        <h2 x-text="'Saved: ' + lastName"></h2>
-        <a class="btn" :href="lastUrl" target="_blank">Open in Mealie ↗</a>
-        <button class="btn ghost" @click="reset()">Add another</button>
+      <div class="card center fade-in">
+        <div class="big">
+          <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 4px 10px rgba(16,185,129,0.35))"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        </div>
+        <h2 x-text="lastName"></h2>
+        <p class="muted">Successfully saved to your Mealie instance.</p>
+        <div class="row" style="width: 100%; margin-top: 10px;">
+          <a class="btn primary" :href="lastUrl" target="_blank" style="flex: 1;">Open in Mealie ↗</a>
+          <button class="btn ghost" @click="reset()" style="flex: 1;">Add another</button>
+        </div>
       </div>
     </template>
 
     <!-- history -->
     <template x-if="view === 'history'">
-      <div class="card">
+      <div class="card fade-in">
         <h2>Import history</h2>
-        <p class="muted small" x-show="!history.length">Nothing imported yet.</p>
+        <p class="muted small" x-show="!history.length">No import history entries recorded.</p>
         <div class="histlist">
           <template x-for="(h, i) in history" :key="i">
             <div class="histitem">
               <div class="histrow">
-                <button class="histtoggle" @click="toggleHist(h)" x-text="expandedId === h.id ? '▾' : '▸'"></button>
+                <button class="histtoggle" @click="toggleHist(h)" x-text="expandedId === h.id ? '▼' : '▶'"></button>
                 <a class="histname" :class="{ histdiscarded: h.status === 'discarded' }"
                    :href="h.status === 'discarded' ? null : h.mealie_url"
                    :target="h.status === 'discarded' ? null : '_blank'"
@@ -291,7 +458,7 @@
                   <span class="histbadge" x-show="h.status === 'discarded'">discarded</span>
                   <span x-text="(h.created_at || '').slice(0,10)"></span>
                   <span class="histsrc" x-show="h.source_url" x-text="histHost(h.source_url)"></span>
-                  <button class="histrestore" x-show="h.status === 'discarded'" @click="restoreImport(h)">↩ restore</button>
+                  <button class="histrestore" x-show="h.status === 'discarded'" @click="restoreImport(h)">restore</button>
                 </div>
               </div>
               <div class="histpreview" x-show="expandedId === h.id" x-cloak>
@@ -303,38 +470,47 @@
                   </template>
                 </ul>
                 <p class="muted small" x-show="((payloads[h.id]||{}).instructions || []).length"
-                   x-text="((payloads[h.id]||{}).instructions || []).length + ' step(s)'"></p>
-                <p class="muted small" x-show="payloads[h.id] && !((payloads[h.id]||{}).ingredients || []).length">No recipe details stored for this entry.</p>
+                   x-text="((payloads[h.id]||{}).instructions || []).length + ' recipe steps'"></p>
+                <p class="muted small" x-show="payloads[h.id] && !((payloads[h.id]||{}).ingredients || []).length">No details recorded for this import.</p>
               </div>
             </div>
           </template>
         </div>
-        <button class="btn ghost" @click="view = 'input'">← Back</button>
+        <button class="btn ghost sm" @click="view = 'input'" style="margin-top: 8px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          <span>Back</span>
+        </button>
       </div>
     </template>
 
     <!-- cookbook: upload -->
     <template x-if="view === 'cookbook-upload'">
-      <div class="card">
+      <div class="card fade-in">
         <h2>📚 Cookbook import</h2>
-        <p class="muted small">Upload a recipe-book PDF — it finds each recipe (with its photo), you pick which to import, the AI structures them, then you review and push the lot. Best for text-based (not scanned) PDFs.</p>
+        <p class="muted small">Upload a recipe book PDF. Mixer parses the cookbook to find individual recipes and images, then lets you review and structure them in bulk. Works best on text-based PDFs.</p>
+        
         <label class="filezone cookbookzone">
           <input type="file" accept=".pdf,application/pdf" @change="pickCookbook($event)" />
-          <span>📚 Choose a cookbook PDF</span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          <span>Select cookbook PDF file</span>
         </label>
         <p class="err" x-show="error" x-text="error"></p>
-        <button class="btn ghost" @click="view = 'input'">← Back</button>
+        
+        <button class="btn ghost sm" @click="view = 'input'" style="margin-top: 8px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          <span>Back</span>
+        </button>
       </div>
     </template>
 
     <!-- cookbook: pick recipes -->
     <template x-if="view === 'cookbook'">
-      <div class="card">
-        <h2>Cookbook — pick recipes</h2>
-        <p class="muted small"><span x-text="cbRecipes.length"></span> found · <span x-text="cbSelCount()"></span> selected</p>
+      <div class="card fade-in">
+        <h2>Cookbook — select recipes</h2>
+        <p class="muted small"><span x-text="cbRecipes.length"></span> recipes found · <span x-text="cbSelCount()"></span> selected</p>
         <div class="row">
-          <button class="btn ghost" @click="cbToggleAll(true)">Select all</button>
-          <button class="btn ghost" @click="cbToggleAll(false)">None</button>
+          <button class="btn ghost sm" @click="cbToggleAll(true)">Select all</button>
+          <button class="btn ghost sm" @click="cbToggleAll(false)">Deselect all</button>
         </div>
         <div class="cblist">
           <template x-for="(r, i) in cbRecipes" :key="i">
@@ -344,45 +520,45 @@
               <div class="cbthumb cbnoimg" x-show="!r.image">🍽</div>
               <div class="cbmeta">
                 <span class="cbtitle" x-text="r.title"></span>
-                <span class="warn small" x-show="cbImported(r.title)">already imported</span>
+                <span class="warn small" x-show="cbImported(r.title)">already imported previously</span>
               </div>
             </label>
           </template>
         </div>
         <p class="err" x-show="error" x-text="error"></p>
-        <div class="row">
+        <div class="row" style="margin-top: 10px;">
           <button class="btn ghost" @click="reset()">Cancel</button>
           <button class="btn primary" :disabled="!cbSelCount()" @click="cbStructure()" x-text="'Structure ' + cbSelCount() + ' →'"></button>
         </div>
       </div>
     </template>
 
-    <!-- cookbook: processing (server-side background job) -->
+    <!-- cookbook: processing -->
     <template x-if="view === 'cookbook-progress'">
-      <div class="card center">
+      <div class="card center fade-in">
         <div class="spinner big"></div>
-        <h2>Structuring your cookbook…</h2>
-        <p class="muted" x-text="(cookbookJob ? cookbookJob.done : 0) + ' / ' + (cookbookJob ? cookbookJob.total : 0) + ' done' + (cookbookJob && cookbookJob.failed ? ' · ' + cookbookJob.failed + ' failed' : '')"></p>
+        <h2>Structuring cookbook…</h2>
+        <p class="muted" x-text="(cookbookJob ? cookbookJob.done : 0) + ' / ' + (cookbookJob ? cookbookJob.total : 0) + ' completed' + (cookbookJob && cookbookJob.failed ? ' · ' + cookbookJob.failed + ' failed' : '')"></p>
         <div class="cbbar"><div class="cbbar-fill" :style="'width:' + (cookbookJob && cookbookJob.total ? Math.round(100 * cookbookJob.done / cookbookJob.total) : 0) + '%'"></div></div>
-        <p class="muted small">This runs on the server — you can close this tab and come back; it'll be waiting for you (☰ → Cookbook, or the banner up top).</p>
-        <div class="row">
-          <button class="btn ghost" @click="cbCancel()">⊘ Stop</button>
-          <button class="btn ghost" @click="view = 'input'">Leave it running</button>
+        <p class="muted small">This is running as a background job on the server. You can close this tab and return later; your progress is preserved.</p>
+        <div class="row" style="width: 100%; margin-top: 10px;">
+          <button class="btn ghost" @click="cbCancel()" style="flex: 1;">Stop Job</button>
+          <button class="btn ghost" @click="view = 'input'" style="flex: 1;">Run in Background</button>
         </div>
       </div>
     </template>
 
     <!-- cookbook: bulk review + push -->
     <template x-if="view === 'cookbook-review'">
-      <div class="card">
-        <h2>Review &amp; push</h2>
-        <p class="muted small"><span x-text="cbStructured.length"></span> structured · <span x-text="cbPushCount()"></span> selected</p>
+      <div class="card fade-in">
+        <h2>Review &amp; push cookbook</h2>
+        <p class="muted small"><span x-text="cbStructured.length"></span> structured · <span x-text="cbPushCount()"></span> selected to push</p>
         <div class="cblist">
           <template x-for="(s, i) in cbStructured" :key="i">
             <div class="cbitem">
               <div class="cbrow">
                 <input type="checkbox" x-model="s.sel" @change="cbSaveReview()" />
-                <button class="histtoggle" @click="cbToggleRow(i)" x-text="cbExpanded === i ? '▾' : '▸'"></button>
+                <button class="histtoggle" @click="cbToggleRow(i)" x-text="cbExpanded === i ? '▼' : '▶'"></button>
                 <img class="cbthumb" :src="s.image" x-show="s.image" alt="" />
                 <div class="cbthumb cbnoimg" x-show="!s.image">🍽</div>
                 <div class="cbmeta">
@@ -393,8 +569,10 @@
                     <span class="badge near" x-show="cbNearFoods(s.recipe)" x-text="'⚠ ' + cbNearFoods(s.recipe) + ' near-match food' + (cbNearFoods(s.recipe) > 1 ? 's' : '') + ' — edit to tidy'"></span>
                   </div>
                 </div>
-                <button class="histrestore" @click="cbEditOne(i)">edit</button>
-                <button class="x" @click="cbRemove(i)" title="remove">✕</button>
+                <button class="histrestore" @click="cbEditOne(i)" style="flex: none;">edit</button>
+                <button class="x" @click="cbRemove(i)" title="remove">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
+                </button>
               </div>
               <div class="histpreview" x-show="cbExpanded === i" x-cloak>
                 <p class="muted small" x-show="s.recipe.servings || s.recipe.yield"
@@ -413,9 +591,9 @@
           </template>
         </div>
         <p class="err" x-show="error" x-text="error"></p>
-        <div class="row">
-          <button class="btn ghost" @click="cbDiscardReview()">Discard all</button>
-          <button class="btn primary" :disabled="!cbPushCount()" @click="cbPushAll()" x-text="'Push ' + cbPushCount() + ' to Mealie'"></button>
+        <div class="row" style="margin-top: 10px;">
+          <button class="btn ghost" @click="cbDiscardReview()" style="flex: 1;">Discard all</button>
+          <button class="btn primary" :disabled="!cbPushCount()" @click="cbPushAll()" x-text="'Push ' + cbPushCount() + ' to Mealie'" style="flex: 2;"></button>
         </div>
       </div>
     </template>
@@ -423,10 +601,13 @@
 
   <footer class="actionbar" x-show="view === 'review'">
     <button class="btn ghost" x-show="cbEditIndex === null && !updateMode" @click="discard()" x-text="queue.length ? 'Discard this' : 'Discard'"></button>
-    <button class="btn primary" x-show="cbEditIndex === null && !updateMode" :disabled="loading" @click="push()">✅ Approve &amp; push</button>
+    <button class="btn primary" x-show="cbEditIndex === null && !updateMode" :disabled="loading" @click="push()">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+      <span>Approve &amp; push</span>
+    </button>
     <button class="btn ghost" x-show="updateMode && cbEditIndex === null" @click="updateMode = null; view = 'fix'">← Cancel</button>
     <button class="btn primary" x-show="updateMode && cbEditIndex === null" :disabled="loading" @click="push()">💾 Save changes</button>
-    <button class="btn ghost" x-show="cbEditIndex !== null" @click="cbCancelEdit()">← Discard edits</button>
+    <button class="btn ghost" x-show="cbEditIndex !== null" @click="cbCancelEdit()">Discard edits</button>
     <button class="btn primary" x-show="cbEditIndex !== null" @click="cbSaveEdit()">Save &amp; back</button>
   </footer>
 
@@ -434,27 +615,51 @@
   <div class="drawer-backdrop" x-show="menuOpen" @click="menuOpen = false" x-transition.opacity x-cloak></div>
   <nav class="drawer" :class="{ open: menuOpen }" x-cloak>
     <div class="drawer-head">
-      <span class="brand">🍲&nbsp;Menu</span>
-      <button class="iconbtn" @click="menuOpen = false" title="Close">✕</button>
+      <span class="brand">🍲 Menu</span>
+      <button class="iconbtn" @click="menuOpen = false" title="Close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
+      </button>
     </div>
-    <button class="drawer-item" @click="openFix()">🔧 <span>Fix existing recipe</span></button>
-    <button class="drawer-item" @click="openCookbook()">📚 <span>Cookbook import</span>
-      <span class="menudot" x-show="cookbookJob" x-cloak x-text="cookbookJob && cookbookJob.status === 'done' ? 'ready' : 'running'"></span></button>
-    <button class="drawer-item" @click="openHistory()">🕘 <span>Import history</span></button>
-    <button class="drawer-item" @click="openSettings()">⚙️ <span>Settings</span></button>
-    <button class="drawer-item" x-show="cfgInfo.login_required" @click="menuOpen = false; logout()">🚪 <span>Log out</span></button>
+    
+    <button class="drawer-item" @click="openFix()">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+      <span>Fix existing recipe</span>
+    </button>
+    
+    <button class="drawer-item" @click="openCookbook()">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+      <span>Cookbook import</span>
+      <span class="menudot" x-show="cookbookJob" x-cloak x-text="cookbookJob && cookbookJob.status === 'done' ? 'ready' : 'running'"></span>
+    </button>
+    
+    <button class="drawer-item" @click="openHistory()">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline><path d="M3.3 7A10 10 0 1 0 12 2v3"></path></svg>
+      <span>Import history</span>
+    </button>
+    
+    <button class="drawer-item" @click="openSettings()">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      <span>Settings</span>
+    </button>
+    
+    <button class="drawer-item" x-show="cfgInfo.login_required" @click="menuOpen = false; logout()">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" x2="9" y1="12" y2="12"></line></svg>
+      <span>Log out</span>
+    </button>
   </nav>
 
   <div class="overlay" x-show="loading" x-transition.opacity x-cloak>
-    <div class="spinner big"></div><p x-text="loadingMsg"></p>
+    <div class="spinner big"></div>
+    <p x-text="loadingMsg"></p>
     <div class="cbbar" x-show="audioProgress > 0" x-cloak style="max-width:240px">
       <div class="cbbar-fill" :style="'width:' + Math.round(audioProgress * 100) + '%'"></div>
     </div>
   </div>
+  
   <div class="toast" x-show="toast" x-text="toast" x-transition></div>
 
   <div class="zoom" x-show="zoomSrc" @click="zoomSrc = ''" x-transition.opacity x-cloak>
-    <img :src="zoomSrc" alt="" />
+    <img :src="zoomSrc" alt="zoomed review" />
   </div>
 
   <div class="modal" x-show="dupModal" @click.self="cancelDup()" x-transition.opacity x-cloak>
@@ -468,12 +673,6 @@
     </div>
   </div>
 
-  <datalist id="foods-list">
-    <template x-for="f in foods" :key="f"><option :value="f"></option></template>
-  </datalist>
-  <datalist id="categories-list">
-    <template x-for="c in categories" :key="c"><option :value="c"></option></template>
-  </datalist>
 </div>
 
 <script>
