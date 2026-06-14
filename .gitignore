@@ -15,3 +15,13 @@ recipe.json
 eggpaste.json
 .claude/
 .DS_Store
+
+# Internal docs — local-only, never publish (infra + planning notes). README.md is public.
+HANDOFF.md
+CLAUDE.md
+ROADMAP.md
+PLAN.md
+plan.md
+PHASE*_PLAN.md
+RESTANDARDIZE_PLAN.md
+HERMES_AGENT.md
