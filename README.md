@@ -25,7 +25,7 @@ Drop in a recipe from **anywhere** — a screenshot, a link, pasted text, a PDF,
 
 ### Other features
 - **Import history:** a log of what you've imported (with dedupe warnings), and the ability to restore a discarded review.
-- **Installable PWA** — a polished, mobile-first interface that's **fully offline-capable**: all assets and fonts are self-hosted, so the UI makes **no third-party/CDN calls**. Add it to your phone's home screen for a native-app feel.
+- **Installable PWA** — a polished, mobile-first interface that's **fully offline-capable**: all assets and fonts are self-hosted, so the UI makes **no third-party/CDN calls**. **Auto light/dark** (follows your device) and respects reduced-motion settings. Add it to your phone's home screen for a native-app feel.
 - **REST API** for external bots/agents (Telegram, etc.).
 - **Voice notes** (opt-in build) — dictate a recipe or upload a screen-recording; local transcription via faster-whisper.
 
