@@ -11,7 +11,7 @@ Drop in a recipe from **anywhere** — a screenshot, a link, pasted text, a PDF,
 ### Add new recipes
 - **Many ways in:** upload **screenshots** (great for Instagram/TikTok posts), paste a **recipe URL** (blogs/recipe sites), paste **text** (from any source), upload a **document** (PDF, markdown, .txt, .eml), record a **voice note** (dictate a recipe), or upload a **screen-recording** of a reel.
 - **Combine sources:** drop in any mix — e.g. ingredients from a reel caption + steps narrated in the video — and they merge into **one recipe** in a single LLM call.
-- **Translate + standardise:** everything is translated to your target language; measured amounts are converted to metric; `tbsp`/`tsp`/`pinch` kept as-is; countable items (eggs, onions) stay as counts.
+- **Translate + standardise:** everything is translated to your target language; measured amounts are converted to your chosen system — **metric or imperial** — applied across every path (single recipes, cookbooks, and re-standardize); `tbsp`/`tsp`/`pinch` kept as-is; countable items (eggs, onions) stay as counts.
 - **Structured ingredients:** each ingredient becomes `quantity / unit / food / note`, so recipes **scale** in Mealie and foods stay clean and reusable.
 - **Review before save:** an editable preview (name, description, servings, yield, ingredients with section headings, steps, categories, notes) — **nothing is written to Mealie until you approve.**
 - **Food autocomplete:** food fields autocomplete from your existing Mealie foods, so you snap variants onto an existing food instead of creating near-duplicates.
@@ -21,11 +21,11 @@ Drop in a recipe from **anywhere** — a screenshot, a link, pasted text, a PDF,
 - **Cookbook import:** upload a recipe-book PDF → it finds each recipe (with its photo) → you pick which to import → the AI structures them → bulk review + push.
 
 ### Fix existing recipes
-- **🔧 Fix existing recipe** (new in v0.11): read a messy recipe back out of Mealie, run it through the same AI pipeline to clean up ingredients, translate, convert to metric, and re-structure it. Review and save back onto the same recipe — **update in place**, not a new one. Great for cleaning up scraper-imported recipes with unparsed ingredient strings.
+- **🔧 Fix existing recipe** (new in v0.11): read a messy recipe back out of Mealie, run it through the same AI pipeline to clean up ingredients, translate, convert to your chosen units (metric or imperial), and re-structure it. Review and save back onto the same recipe — **update in place**, not a new one. Great for cleaning up scraper-imported recipes with unparsed ingredient strings.
 
 ### Other features
 - **Import history:** a log of what you've imported (with dedupe warnings), and the ability to restore a discarded review.
-- **Installable PWA** — add to your phone's home screen for a native-app feel.
+- **Installable PWA** — a polished, mobile-first interface that's **fully offline-capable**: all assets and fonts are self-hosted, so the UI makes **no third-party/CDN calls**. Add it to your phone's home screen for a native-app feel.
 - **REST API** for external bots/agents (Telegram, etc.).
 - **Voice notes** (opt-in build) — dictate a recipe or upload a screen-recording; local transcription via faster-whisper.
 
@@ -149,7 +149,7 @@ Settings are stored on the **`/data` volume**, so you do this once. Change them 
 ### Adding a new recipe
 
 1. Upload a recipe screenshot, paste a link, paste text, upload a document, or record/upload audio — or **any combination**.
-2. (Optional) add instructions ("no mushrooms") and pick the output language.
+2. (Optional) add instructions ("no mushrooms") and pick the output language + units (metric/imperial).
 3. Click **Make recipe**.
 4. Review and edit the structured preview — fix anything the model got wrong, snap foods onto existing ones, adjust categories, add notes, optionally add a dish photo.
 5. Click **✅ Approve & push**. Done.
@@ -158,7 +158,7 @@ Settings are stored on the **`/data` volume**, so you do this once. Change them 
 
 1. Open the **☰ menu → 🔧 Fix existing recipe**.
 2. Search or browse your Mealie recipes, pick one.
-3. The AI re-structures it (cleans ingredients, translates, converts to metric).
+3. The AI re-structures it (cleans ingredients, translates, converts to your chosen units).
 4. Review the result — edit anything.
 5. Click **💾 Save changes** to update in place.
 
