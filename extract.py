@@ -43,7 +43,7 @@ SYSTEM_PROMPT = (
 )
 
 
-def build_user_prompt(target_language: str, user_note: str, source: str = "the image(s)", known_categories=()) -> str:
+def build_user_prompt(target_language: str, user_note: str, source: str = "the image(s)", known_categories=(), units_system: str = "metric") -> str:
     extra = f"\n\nExtra instructions from the user: {user_note}" if user_note.strip() else ""
     cat_rule = (
         "\n- For \"categories\", PREFER an existing category from this list when one "
@@ -51,6 +51,10 @@ def build_user_prompt(target_language: str, user_note: str, source: str = "the i
         "none of them fit."
         if known_categories else ""
     )
+    if units_system.lower() == "imperial":
+        units_rule = "- Convert amounts measured by weight or volume to Imperial/US customary units (ounces, pounds, cups, fluid ounces). Convert temperatures to Fahrenheit. Keep tbsp/tsp/pinch as-is."
+    else:
+        units_rule = "- Convert amounts measured by weight or volume (flour, sugar, butter, liquids, meat, grains, ...) to metric (grams, millilitres). Convert temperatures to Celsius. Keep tbsp/tsp/pinch as-is."
     return f"""Extract every recipe in {source}.
 
 If several sources are provided — multiple images, and/or a caption, pasted text,
@@ -77,7 +81,7 @@ For each recipe, output:
 
 Rules:
 - Translate EVERYTHING (name, ingredients, steps, tags) into {target_language}.
-- Convert amounts measured by weight or volume (flour, sugar, butter, liquids, meat, grains, ...) to metric (grams, millilitres). Keep tbsp/tsp/pinch as-is.
+{units_rule}
 - Keep naturally COUNTABLE whole items as a count, never a weight — eggs, onions, lemons, peppers, bananas, potatoes, etc.: quantity = the number, unit = null, food = the item, with any size/prep in note ("2 large onions, diced" → quantity 2, unit null, food "onion", note "large, diced"). Do NOT convert a whole countable item to grams.
 - If a countable item has a natural counting word, use it as the unit and keep food clean: "2 cloves garlic" → quantity 2, unit "clove", food "garlic"; likewise slices, cans, sprigs, heads, sticks, rashers.
 - Put the ingredient name in "food" and descriptors in "note", so "food" stays clean and reusable.
@@ -156,10 +160,11 @@ def extract_recipes(
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
+    units_system: str = "metric",
 ) -> list[dict]:
     """Extract recipe(s) from one or more images."""
     # Multimodal message: the text prompt + every image.
-    content = [{"type": "text", "text": build_user_prompt(target_language, user_note, known_categories=known_categories)}]
+    content = [{"type": "text", "text": build_user_prompt(target_language, user_note, known_categories=known_categories, units_system=units_system)}]
     for p in image_paths:
         content.append({"type": "image_url", "image_url": {"url": image_to_data_url(p)}})
     return _structure(content)
@@ -170,6 +175,7 @@ def extract_recipes_from_text(
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
+    units_system: str = "metric",
 ) -> list[dict]:
     """Extract recipe(s) from pasted raw text — no image, no scrape. The text goes
     straight to the same structuring call. Handy as a manual fallback: paste an
@@ -177,6 +183,7 @@ def extract_recipes_from_text(
     prompt = build_user_prompt(
         target_language, user_note,
         source="the recipe text below", known_categories=known_categories,
+        units_system=units_system,
     )
     content = [{"type": "text", "text": f"{prompt}\n\n--- RECIPE TEXT ---\n{text}"}]
     return _structure(content)
@@ -258,6 +265,7 @@ def extract_recipes_from_audio(
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
+    units_system: str = "metric",
     progress=None,
 ) -> list[dict]:
     """Transcribe a voice note / dictation locally (faster-whisper), then structure the
@@ -273,7 +281,7 @@ def extract_recipes_from_audio(
         )
     return extract_recipes_from_text(
         text, user_note=user_note, target_language=target_language,
-        known_categories=known_categories,
+        known_categories=known_categories, units_system=units_system,
     )
 
 
@@ -282,6 +290,7 @@ def extract_recipes_from_url(
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
+    units_system: str = "metric",
 ) -> list[dict]:
     """Extract recipe(s) from a recipe-website URL.
 
@@ -292,7 +301,7 @@ def extract_recipes_from_url(
     Won't work on social posts (Instagram/TikTok) — screenshot those instead.
     """
     source_text, image_url = _scrape_url(url)
-    prompt = build_user_prompt(target_language, user_note, source="the recipe text below", known_categories=known_categories)
+    prompt = build_user_prompt(target_language, user_note, source="the recipe text below", known_categories=known_categories, units_system=units_system)
     content = [{"type": "text", "text": f"{prompt}\n\n--- RECIPE SOURCE ---\n{source_text}"}]
     recipes = _structure(content)
     # carry the page's dish photo + source link through so push.py can attach them
@@ -380,6 +389,7 @@ def extract_recipes_from_video(
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
+    units_system: str = "metric",
 ) -> list[dict]:
     """Extract a recipe from a social VIDEO post (TikTok / Reel / Short / FB).
 
@@ -411,6 +421,7 @@ def extract_recipes_from_video(
     prompt = build_user_prompt(
         target_language, user_note,
         source="the social-media post text below", known_categories=known_categories,
+        units_system=units_system,
     )
     content = [{"type": "text", "text": f"{prompt}\n\n--- POST TEXT ---\n{source_text}"}]
     recipes = _structure(content)
@@ -422,23 +433,21 @@ def extract_recipes_from_video(
 
 
 def extract_recipes_from_sources(
-    image_paths=(),
+    image_paths: list[str] | None = None,
     url: str = "",
     text: str = "",
-    doc_texts=(),
+    doc_texts: list[str] | None = None,
     audio_path: str = "",
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
+    units_system: str = "metric",
     progress=None,
 ) -> list[dict]:
-    """Unified extraction: combine ANY mix of sources — image(s), a recipe/social link,
-    pasted text, document text, and a voice note / screen-recording — into ONE structuring
-    call. Each text source goes in under a labeled header so the model knows its provenance
-    (e.g. ingredients from a reel caption + steps narrated in the video). Reuses the same
-    helpers as the single-source paths. `progress` (0..1) is forwarded to the transcriber
-    for the UI bar. Per-source failures are soft (one bad link won't sink a combine that has
-    other usable inputs); raises only if nothing usable was provided."""
+    """Unified combine extractor: takes ANY combination of inputs (images, a URL,
+    pasted text, uploaded documents, and a voice note), builds a single multimodal
+    prompt where the text parts are clearly labelled blocks, and runs ONE extraction.
+    Used by /api/extract (sync) and /api/extract/job (async)."""
     url = (url or "").strip()
     image_paths = list(image_paths or [])
     doc_texts = [t for t in (doc_texts or []) if t and t.strip()]
@@ -490,7 +499,7 @@ def extract_recipes_from_sources(
 
     prompt = build_user_prompt(
         target_language, user_note,
-        source="the sources below", known_categories=known_categories,
+        source="the provided sources", known_categories=known_categories, units_system=units_system,
     )
     text_payload = prompt + ("\n\n" + "\n\n".join(text_blocks) if text_blocks else "")
     content = [{"type": "text", "text": text_payload}]

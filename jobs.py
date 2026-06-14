@@ -53,20 +53,20 @@ def _load(job_id: str, kind: str = "cookbook") -> dict | None:
         return None
 
 
-def _structure_default(text: str, language: str):
+def _structure_default(text: str, language: str, units_system: str):
     from extract import extract_recipes_from_text
-    return extract_recipes_from_text(text, target_language=language)
+    return extract_recipes_from_text(text, target_language=language, units_system=units_system)
 
 
-def _process_job(job: dict, chunks: list[dict], language: str, structure_fn=None) -> dict:
+def _process_job(job: dict, chunks: list[dict], language: str, units_system: str, structure_fn=None) -> dict:
     """The structuring loop — pure + testable. Mutates `job` in place, flushing after each
-    recipe so a crash/restart keeps progress. `structure_fn(text, language) -> [recipe...]`."""
+    recipe so a crash/restart keeps progress. `structure_fn(text, language, units_system) -> [recipe...]`."""
     structure_fn = structure_fn or _structure_default
     for ch in chunks:
         if job.get("cancelled"):       # Stop button — checked between recipes
             break
         try:
-            recs = structure_fn(ch.get("text", ""), language) or []
+            recs = structure_fn(ch.get("text", ""), language, units_system) or []
             with _LOCK:
                 for rec in recs:
                     job["recipes"].append({"recipe": rec, "image": ch.get("image")})
@@ -94,7 +94,7 @@ def cancel_job(job_id: str) -> bool:
     return True
 
 
-def start_job(chunks: list[dict], language: str = "English") -> str:
+def start_job(chunks: list[dict], language: str = "English", units_system: str = "metric") -> str:
     """Create a job for the selected chunks and run it in a daemon thread. Returns the id."""
     job_id = uuid.uuid4().hex[:12]
     job = {
@@ -106,7 +106,7 @@ def start_job(chunks: list[dict], language: str = "English") -> str:
     with _LOCK:
         JOBS[job_id] = job
     _flush(job)
-    threading.Thread(target=_process_job, args=(job, chunks, language), daemon=True).start()
+    threading.Thread(target=_process_job, args=(job, chunks, language, units_system), daemon=True).start()
     return job_id
 
 
@@ -143,7 +143,7 @@ def list_jobs(limit: int = 10) -> list[dict]:
 # the browser polls get_job(), rather than blocking the /api/extract request. `sources` is
 # a dict {image_paths, url, text, doc_texts, audio_path, _tmp_paths}.
 
-def _extract_sources_default(sources, user_note, language, known_categories, progress):
+def _extract_sources_default(sources, user_note, language, known_categories, units_system, progress):
     from extract import extract_recipes_from_sources
     return extract_recipes_from_sources(
         image_paths=sources.get("image_paths", []),
@@ -152,11 +152,12 @@ def _extract_sources_default(sources, user_note, language, known_categories, pro
         doc_texts=sources.get("doc_texts", []),
         audio_path=sources.get("audio_path", ""),
         user_note=user_note, target_language=language,
-        known_categories=known_categories, progress=progress,
+        known_categories=known_categories, units_system=units_system,
+        progress=progress,
     )
 
 
-def _process_extract_job(job, sources, language, user_note, known_categories,
+def _process_extract_job(job, sources, language, user_note, known_categories, units_system,
                          extract_fn=None) -> dict:
     """Combine the given sources into recipe(s). Mutates `job` in place (status/phase/progress)
     and always removes the temp upload files in `sources['_tmp_paths']`. `extract_fn(sources,
@@ -170,7 +171,7 @@ def _process_extract_job(job, sources, language, user_note, known_categories,
                 job["phase"] = "transcribing" if frac < 0.999 else "structuring"
 
     try:
-        recs = extract_fn(sources, user_note, language, known_categories, on_progress) or []
+        recs = extract_fn(sources, user_note, language, known_categories, units_system, on_progress) or []
         with _LOCK:
             for rec in recs:
                 job["recipes"].append({"recipe": rec, "image": rec.get("image_url")})
@@ -194,7 +195,7 @@ def _process_extract_job(job, sources, language, user_note, known_categories,
 
 
 def start_extract_job(sources: dict, language: str = "English", user_note: str = "",
-                     known_categories=()) -> str:
+                     known_categories=(), units_system: str = "metric") -> str:
     """Kick off a combine extraction in a daemon thread; returns the id the browser polls."""
     job_id = uuid.uuid4().hex[:12]
     # Opening phase reflects the first slow step the job will hit (audio dominates; else a
@@ -212,7 +213,7 @@ def start_extract_job(sources: dict, language: str = "English", user_note: str =
     _flush(job)
     threading.Thread(
         target=_process_extract_job,
-        args=(job, sources, language, user_note, list(known_categories)),
+        args=(job, sources, language, user_note, list(known_categories), units_system),
         daemon=True,
     ).start()
     return job_id

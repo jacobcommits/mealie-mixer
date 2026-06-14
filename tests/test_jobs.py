@@ -10,14 +10,14 @@ def test_process_job_success_and_failure(tmp_path, monkeypatch):
         {"text": "recipe C", "image": None, "title": "C"},
     ]
 
-    def stub(text, language):
+    def stub(text, language, units_system):
         if text == "BOOM":
             raise RuntimeError("nope")
         return [{"name": text.upper()}]
 
     job = {"id": "t1", "status": "running", "total": 3, "done": 0, "failed": 0,
            "label": "A", "created_at": "2026-01-01T00:00:00+00:00", "recipes": []}
-    out = jobs._process_job(job, chunks, "English", structure_fn=stub)
+    out = jobs._process_job(job, chunks, "English", "metric", structure_fn=stub)
 
     assert out["status"] == "done"
     assert out["done"] == 3 and out["failed"] == 1
@@ -36,13 +36,13 @@ def test_process_job_cancel(tmp_path, monkeypatch):
     chunks = [{"text": "a", "image": None, "title": "a"} for _ in range(3)]
     calls = {"n": 0}
 
-    def stub(text, language):
+    def stub(text, language, units_system):
         calls["n"] += 1
         if calls["n"] == 1:
             job["cancelled"] = True            # Stop requested after the first recipe
         return [{"name": "R" + str(calls["n"])}]
 
-    out = jobs._process_job(job, chunks, "English", structure_fn=stub)
+    out = jobs._process_job(job, chunks, "English", "metric", structure_fn=stub)
     assert out["status"] == "cancelled"
     assert out["done"] == 1 and len(out["recipes"]) == 1   # loop broke before the 2nd
 
@@ -87,13 +87,13 @@ def test_process_extract_job_success_and_combine(tmp_path, monkeypatch):
     sources = {"url": "http://x/reel", "audio_path": str(audio), "_tmp_paths": [str(audio)]}
     seen = {}
 
-    def stub(srcs, note, lang, cats, progress):
+    def stub(srcs, note, lang, cats, units, progress):
         seen.update(srcs)
         progress(0.5)
         progress(1.0)                      # flips phase to "structuring"
         return [{"name": "Cake", "image_url": "http://x/thumb.jpg"}]
 
-    out = jobs._process_extract_job(job, sources, "English", "", [], extract_fn=stub)
+    out = jobs._process_extract_job(job, sources, "English", "", [], "metric", extract_fn=stub)
 
     assert out["status"] == "done" and out["done"] == 1
     assert out["progress"] == 1.0 and out["phase"] == "done"
@@ -115,7 +115,7 @@ def test_process_extract_job_error_cleans_up(tmp_path, monkeypatch):
     def boom(*a):
         raise ValueError("no speech")
 
-    out = jobs._process_extract_job(job, sources, "English", "", [], extract_fn=boom)
+    out = jobs._process_extract_job(job, sources, "English", "", [], "metric", extract_fn=boom)
 
     assert out["status"] == "error" and out["failed"] == 1
     assert out["error"] == "no speech"

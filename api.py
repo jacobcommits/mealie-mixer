@@ -209,6 +209,7 @@ async def api_extract(
     audio: UploadFile | None = File(None),
     language: str = Form("English"),
     prompt: str = Form(""),
+    units_system: str = Form("metric"),
 ):
     """Extract recipe(s) from ANY mix of sources, combined into one recipe.
 
@@ -236,6 +237,7 @@ async def api_extract(
             audio_path=audio_path,
             user_note=prompt, target_language=language,
             known_categories=known_categories,
+            units_system=units_system,
         )
     except ValueError as e:            # nothing provided / no speech in the audio
         raise HTTPException(status_code=400, detail=str(e))
@@ -293,6 +295,7 @@ async def api_extract_job(
     audio: UploadFile | None = File(None),
     language: str = Form("English"),
     prompt: str = Form(""),
+    units_system: str = Form("metric"),
 ):
     """Start a background combine-extraction job: any mix of image/document files, a url,
     text, and a voice note / screen-recording. Slow sources (whisper transcription, link
@@ -318,6 +321,7 @@ async def api_extract_job(
     }
     job_id = jobs.start_extract_job(
         sources, language=language, user_note=prompt, known_categories=known_categories,
+        units_system=units_system,
     )
     return {"job_id": job_id}
 
@@ -479,6 +483,7 @@ def api_recipe_names():
 class RestandardizeBody(BaseModel):
     slug: str
     language: str = "English"
+    units_system: str = "metric"
 
 
 class UpdateResponse(BaseModel):
@@ -514,6 +519,7 @@ def api_restandardize(body: RestandardizeBody):
     try:
         recipes = extract_recipes_from_text(
             text, target_language=body.language, known_categories=known_categories,
+            units_system=body.units_system,
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AI structuring failed: {str(e)[:300]}")
@@ -586,6 +592,7 @@ async def api_cookbook_split(file: UploadFile = File(...)):
 class CookbookJobBody(BaseModel):
     recipes: list[dict] = []
     language: str = "English"
+    units_system: str = "metric"
 
 
 @router.post("/cookbook/job", dependencies=[Depends(require_access)])
@@ -594,7 +601,7 @@ def api_cookbook_job(body: CookbookJobBody):
     Returns a job_id the browser polls; the run survives closing the tab."""
     if not body.recipes:
         raise HTTPException(status_code=400, detail="No recipes selected to process.")
-    return {"job_id": jobs.start_job(body.recipes, body.language)}
+    return {"job_id": jobs.start_job(body.recipes, body.language, body.units_system)}
 
 
 @router.get("/cookbook/job/{job_id}", dependencies=[Depends(require_access)])
