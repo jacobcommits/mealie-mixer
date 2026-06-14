@@ -37,6 +37,25 @@ def generate_api_key() -> str:
     return secrets.token_urlsafe(32)
 
 
+def session_secret() -> str:
+    """The cookie-signing secret. Resolved in this order:
+      1. MIXER_SESSION_SECRET from env/config (operator-set) → used verbatim
+      2. a generated secret persisted to the data volume → reused every boot
+      3. a fresh in-memory secret (only if the volume isn't writable)
+
+    Persisting it means a restart no longer logs every browser out (and it
+    survives a single-worker uvicorn across rebuilds)."""
+    existing = config.get("MIXER_SESSION_SECRET")
+    if existing:
+        return existing
+    generated = generate_api_key()
+    try:
+        config.save({"MIXER_SESSION_SECRET": generated})
+    except OSError:
+        pass  # not critical: sessions just reset on restart, as before
+    return generated
+
+
 def _clean_rpm(v) -> str:
     """Normalise the AI requests/min field to a positive integer string, or "" (no limit)."""
     try:

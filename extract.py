@@ -35,6 +35,11 @@ import config
 MAX_IMAGE_PX = 1200   # longest edge after resize — keeps payloads small/fast
 JPEG_QUALITY = 85
 
+# LLM call resilience (see _call_with_retry):
+_USE_JSON_OBJECT = True       # flipped off for the process if the backend 400s on response_format
+_MAX_AI_RETRIES = 2           # extra attempts after the first (transient errors only)
+_AI_RETRY_BACKOFF = 2.0       # seconds between retries, doubled each time
+
 # ── The prompt (this is what we'll tune together) ──────────────────────
 SYSTEM_PROMPT = (
     "You are a precise recipe extraction engine. You read recipe images and "
@@ -133,24 +138,76 @@ def _rpm_wait() -> None:
 
 
 # ── The core call (this is what the UI will import and use) ────────────
+def _is_transient_err(err: Exception) -> bool:
+    """Retry on provider rate-limit, network/timeout, and any HTTP 5xx."""
+    import openai
+    if isinstance(err, openai.RateLimitError):
+        return True
+    if isinstance(err, (openai.APIConnectionError, openai.APITimeoutError)):
+        return True
+    code = getattr(err, "status_code", None)
+    return isinstance(code, int) and code >= 500
+
+
+def _is_bad_request_err(err: Exception) -> bool:
+    """A 400 — usually the backend rejecting response_format (json mode)."""
+    import openai
+    return isinstance(err, openai.BadRequestError)
+
+
+def _call_with_retry(make_call):
+    """Run ``make_call(use_json: bool) -> response`` with two safety nets:
+
+    1. response_format fallback — if the backend 400s while json mode is on,
+       disable it for the whole process and retry this call without it (so a
+       non-Gemini backend that doesn't support response_format still works;
+       a genuine 400 then surfaces on the second attempt).
+    2. transient retry — rate-limit / connection / 5xx retried up to
+       _MAX_AI_RETRIES times with exponential backoff.
+    """
+    global _USE_JSON_OBJECT
+    for attempt in range(_MAX_AI_RETRIES + 1):
+        try:
+            return make_call(_USE_JSON_OBJECT)
+        except Exception as e:
+            if _is_bad_request_err(e) and _USE_JSON_OBJECT:
+                _USE_JSON_OBJECT = False
+                print("  ! backend rejected response_format=json_object — retrying without", file=sys.stderr)
+                continue
+            if not _is_transient_err(e) or attempt == _MAX_AI_RETRIES:
+                raise
+            time.sleep(_AI_RETRY_BACKOFF * (2 ** attempt))
+    raise RuntimeError("AI call failed after retries")  # defensive — unreachable
+
+
 def _structure(content: list) -> list[dict]:
     """Send a user-content payload (text prompt + images, or just text) to the
-    LLM and return normalised structured recipes. Shared by the image and URL
-    paths — same single call, same JSON shape out, regardless of input."""
+    LLM and return normalised structured recipes. Shared by every input path —
+    same single call, same JSON shape out, regardless of input."""
     api_key = config.get("AI_API_KEY")
     if not api_key:
         raise RuntimeError("AI_API_KEY is not set — configure it in the setup page or .env.")
 
     client = OpenAI(base_url=config.get("AI_BASE_URL"), api_key=api_key)
     _rpm_wait()   # honour the configured AI requests/min cap (bulk imports)
-    resp = client.chat.completions.create(
-        model=config.get("AI_MODEL"),
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": content},
-        ],
-        temperature=0.1,
-    )
+
+    def make_call(use_json: bool):
+        kwargs = {
+            "model": config.get("AI_MODEL"),
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": content},
+            ],
+            "temperature": 0.1,
+        }
+        if use_json:
+            # Constrain the model to valid JSON — hardens parse_recipes against the
+            # occasional prose-wrapped reply. Gemini's OpenAI-compat endpoint supports
+            # it; if a backend doesn't, _call_with_retry turns it off for the process.
+            kwargs["response_format"] = {"type": "json_object"}
+        return client.chat.completions.create(**kwargs)
+
+    resp = _call_with_retry(make_call)
     raw = resp.choices[0].message.content or ""
     return _normalize(parse_recipes(raw))
 
@@ -312,12 +369,50 @@ def extract_recipes_from_url(
     return recipes
 
 
+def _assert_safe_url(url: str) -> None:
+    """SSRF guard: reject a URL whose host resolves to a private / loopback /
+    link-local / unspecified address (cloud-metadata endpoints like
+    169.254.169.254, internal admin UIs, other LAN services). Called before any
+    server-side fetch of a user-supplied URL. Raises ValueError on anything
+    unsafe or unresolvable; conservative — blocks if ANY resolved address is
+    internal (handles round-robin DNS)."""
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    try:
+        host = (urlparse(url or "").hostname or "").lower()
+    except Exception:
+        host = ""
+    if not host:
+        raise ValueError("That link has no hostname — can't fetch it.")
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        raise ValueError(f"Couldn't resolve the host '{host}'.")
+    for info in infos:
+        ip = info[4][0]
+        if "%" in ip:                       # strip a scoped IPv6 zone index (fe80::1%eth0)
+            ip = ip.split("%", 1)[0]
+        try:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            continue
+        if (addr.is_private or addr.is_loopback or addr.is_link_local
+                or addr.is_unspecified or addr.is_multicast):
+            raise ValueError(
+                "Refusing to fetch that link — its host points at a private/internal "
+                "address (SSRF guard). If it's genuinely a public recipe site, check the URL."
+            )
+
+
 def _scrape_url(url: str) -> tuple[str, str]:
     """Fetch a URL and pull a rough recipe text block + the dish photo URL out
     of it. Raises a clear error if no structured recipe is found on the page."""
     import httpx
     from recipe_scrapers import scrape_html
 
+    _assert_safe_url(url)
     headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) MealieMixer/1.0"}
     resp = httpx.get(url, headers=headers, follow_redirects=True, timeout=30)
     resp.raise_for_status()
@@ -374,6 +469,7 @@ def _video_metadata(url: str) -> dict:
     no video download, no ffmpeg."""
     import yt_dlp  # lazy: only needed on the video path
 
+    _assert_safe_url(url)
     opts = {"quiet": True, "skip_download": True, "noplaylist": True, "no_warnings": True}
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)

@@ -22,6 +22,7 @@ import tempfile
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 import config
@@ -221,15 +222,21 @@ async def api_extract(
     """
     # Feed the user's existing Mealie categories to the prompt so the AI reuses
     # them instead of spawning near-dupes. Fail-soft: empty if Mealie's unreachable.
+    # Run in the threadpool — fetch_category_names is a blocking httpx call (up to
+    # its 30s timeout) and this endpoint is async, so calling it directly would
+    # freeze the whole event loop (every other request, health checks, job polls).
     try:
-        known_categories = fetch_category_names()
+        known_categories = await run_in_threadpool(fetch_category_names)
     except Exception:
         known_categories = []
 
     tmp_paths: list[str] = []
     try:
         image_paths, doc_texts, audio_path = await _collect_sources(files, audio, tmp_paths)
-        recipes = extract_recipes_from_sources(
+        # extract_recipes_from_sources does blocking LLM + httpx work — run it in the
+        # threadpool so a slow extract doesn't stall the server for everyone else.
+        recipes = await run_in_threadpool(
+            extract_recipes_from_sources,
             image_paths=image_paths,
             url=(url or "").strip(),
             text=text or "",
@@ -259,15 +266,44 @@ async def api_extract(
     )
 
 
+def _max_upload_bytes() -> int:
+    """Per-request upload cap from config (MIXER_MAX_UPLOAD_MB), default 100 MB.
+    Bounds the bytes read from multipart uploads so a huge file (or a flood of
+    files) can't OOM the lean container. 100 MB comfortably covers a batch of
+    phone screenshots (6–9 typical) plus a cookbook PDF; tune via env/config."""
+    try:
+        mb = float(config.get("MIXER_MAX_UPLOAD_MB") or 0)
+    except (TypeError, ValueError):
+        mb = 0
+    return int(mb * 1024 * 1024) if mb > 0 else 100 * 1024 * 1024
+
+
 async def _collect_sources(files, audio, tmp_paths):
     """Read uploads into (image_paths, doc_texts, audio_path). Images/audio are written to
     temp files appended to `tmp_paths` (caller or the job owns cleanup); documents are
-    decoded to text. Shared by the sync /api/extract and the async /api/extract/job."""
+    decoded to text. Shared by the sync /api/extract and the async /api/extract/job.
+    Enforces the per-request upload cap (MIXER_MAX_UPLOAD_MB) → 413 if exceeded."""
+    max_bytes = _max_upload_bytes()
+    total_read = 0
+
+    def _check(n: int) -> None:
+        nonlocal total_read
+        total_read += n
+        if total_read > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"Upload too large — limit is {max_bytes // (1024 * 1024)} MB total "
+                    "(set MIXER_MAX_UPLOAD_MB to raise it)."
+                ),
+            )
+
     image_paths: list[str] = []
     doc_texts: list[str] = []
     audio_path = ""
     for f in files or []:
         data = await f.read()
+        _check(len(data))
         if is_document(f.filename or ""):
             doc_texts.append(file_to_text(f.filename or "", data))
         else:
@@ -280,8 +316,10 @@ async def _collect_sources(files, audio, tmp_paths):
     if audio is not None:
         suffix = os.path.splitext(audio.filename or "note.webm")[1] or ".webm"
         fd, path = tempfile.mkstemp(suffix=suffix, prefix="mm-audio-")
+        data = await audio.read()
+        _check(len(data))
         with os.fdopen(fd, "wb") as out:
-            out.write(await audio.read())
+            out.write(data)
         tmp_paths.append(path)
         audio_path = path
     return image_paths, doc_texts, audio_path
@@ -306,7 +344,7 @@ async def api_extract_job(
             status_code=503, detail="Voice transcription isn't enabled in this build.",
         )
     try:
-        known_categories = fetch_category_names()
+        known_categories = await run_in_threadpool(fetch_category_names)
     except Exception:
         known_categories = []
     tmp_paths: list[str] = []
@@ -573,8 +611,15 @@ async def api_cookbook_split(file: UploadFile = File(...)):
     """Split a cookbook PDF into per-recipe chunks (text + hero image) — B7. No LLM;
     the browser then structures each chunk via /api/extract and pushes via /api/push."""
     data = await file.read()
+    if len(data) > _max_upload_bytes():
+        raise HTTPException(
+            status_code=413,
+            detail=f"That PDF is too large (limit {_max_upload_bytes() // (1024 * 1024)} MB).",
+        )
     try:
-        recipes = cookbook.split_cookbook(data)
+        # split_cookbook is CPU-bound PIL/pypdf work — run it in the threadpool so
+        # a big book doesn't stall the (async) event loop for everyone else.
+        recipes = await run_in_threadpool(cookbook.split_cookbook, data)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Couldn't read that PDF: {str(e)[:200]}")
     if not recipes:
@@ -661,8 +706,14 @@ def api_history_item(item_id: int):
 async def api_recipe_image(slug: str, file: UploadFile = File(...)):
     """Attach an uploaded photo to a recipe (Mealie resizes/thumbnails it).
     Called after /api/push, with the slug it returned."""
+    data = await file.read()
+    if len(data) > _max_upload_bytes():
+        raise HTTPException(
+            status_code=413,
+            detail=f"Photo too large (limit {_max_upload_bytes() // (1024 * 1024)} MB).",
+        )
     try:
-        upload_recipe_image(slug, await file.read(), file.filename or "photo.jpg")
+        upload_recipe_image(slug, data, file.filename or "photo.jpg")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Image upload failed: {str(e)[:200]}")
     return {"ok": True}

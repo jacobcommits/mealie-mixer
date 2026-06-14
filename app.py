@@ -34,10 +34,11 @@ def create_app():
         description="Recipe extraction + push API.  Interactive docs at /docs.",
     )
 
-    # Signed-cookie sessions for the web UI login. A persisted secret
-    # (set MIXER_SESSION_SECRET) survives restarts; otherwise a fresh per-process
-    # one is used (sessions just reset on restart — re-login).
-    secret = config.get("MIXER_SESSION_SECRET") or core.generate_api_key()
+    # Signed-cookie sessions for the web UI login. The secret is env/config-set
+    # if MIXER_SESSION_SECRET is provided, otherwise generated ONCE and persisted
+    # to the /data volume (core.session_secret) so restarts/rebuilds don't log
+    # everyone out.
+    secret = core.session_secret()
     app.add_middleware(SessionMiddleware, secret_key=secret, same_site="lax", https_only=False)
 
     app.include_router(api_router)

@@ -112,15 +112,7 @@ def fetch_recipe_names() -> list[str]:
     """All existing Mealie recipe names, sorted. Feeds the review-step
     duplicate-name warning so the reviewer notices a name already in Mealie
     (which would otherwise create a 'recipe-2'). Returns [] if Mealie is unset."""
-    url, token = _mealie()
-    if not (url and token):
-        return []
-    with httpx.Client(
-        base_url=url, headers={"Authorization": f"Bearer {token}"}, timeout=30
-    ) as client:
-        r = client.get("/api/recipes", params={"perPage": -1})
-        r.raise_for_status()
-        return sorted({it["name"] for it in r.json().get("items", []) if it.get("name")})
+    return sorted(r["name"] for r in fetch_recipes())
 
 
 def fetch_recipes() -> list[dict]:
