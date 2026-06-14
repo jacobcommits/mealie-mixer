@@ -510,6 +510,21 @@ function mixer() {
       if (this.queue.length) { this.showToast('Discarded — next recipe (' + this.queue.length + ' left)'); this.error = ''; this.loadRecipe(this.queue.shift()); }
       else { this.reset(); }
     },
+    hasSources() {
+      // Are the original inputs still in scope to re-run extraction? (After a page
+      // reload they're gone — File objects can't be persisted — so the button hides.)
+      return !!(this.fileList?.length || this.url.trim() || this.pastedText.trim() || this.audioBlob);
+    },
+    reExtract() {
+      // Back to the input screen WITHOUT clearing the sources (fileList/url/text/audio/
+      // prompt), so the user can tweak the prompt and re-run — no re-uploading. Drops
+      // only the review-only image previews. Only shown when hasSources() && normal flow.
+      this.error = '';
+      this.clearSourceImages();
+      this.dupModal = false;
+      this.showToast('Sources kept — tweak the prompt, then Make recipe');
+      this.view = 'input';
+    },
     async stashDiscard() {
       const r = this.recipe;
       if (!r || (!(r.name || '').trim() && !(r.ingredients || []).length)) return;  // nothing worth keeping
