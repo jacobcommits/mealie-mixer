@@ -8,10 +8,11 @@ Covers:
 - API endpoints: /api/mealie-recipes, /api/restandardize, /api/recipes/{slug}/update
 """
 
-from unittest.mock import MagicMock, patch, call
-import pytest
-import push
+from unittest.mock import MagicMock, call, patch
 
+import pytest
+
+import push
 
 # ── recipe_to_text ─────────────────────────────────────────────────────
 

@@ -1,3 +1,4 @@
 # Dev/test only — not installed in the container image.
 -r requirements.txt
 pytest==9.0.3
+ruff==0.15.17            # lint — `ruff check .` (config in pyproject.toml)

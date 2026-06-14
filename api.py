@@ -51,7 +51,6 @@ from push import (
     upload_recipe_image,
 )
 
-
 # ── Pydantic models ────────────────────────────────────────────────────
 
 class Ingredient(BaseModel):

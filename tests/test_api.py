@@ -9,8 +9,7 @@ import pytest
 from fastapi import HTTPException
 
 import config
-from api import Ingredient, Recipe, ExtractResponse, PushResponse, require_api_key
-
+from api import ExtractResponse, Ingredient, PushResponse, Recipe, require_api_key
 
 # ── helpers ──────────────────────────────────────────────────────────────
 

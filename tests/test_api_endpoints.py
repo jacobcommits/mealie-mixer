@@ -1,6 +1,5 @@
 """Integration tests for the HTTP REST API endpoints."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 import api
@@ -53,7 +52,7 @@ class TestExtractEndpoint:
         })
         response = client.post("/api/extract")
         assert response.status_code == 401
-        
+
     def test_extract_invalid_auth(self, monkeypatch, tmp_path):
         _isolate(monkeypatch, tmp_path, {
             "MEALIE_URL": "http://m:9925", "MEALIE_TOKEN": "t", "AI_API_KEY": "k", "MIXER_API_KEY": "secret"

@@ -14,7 +14,6 @@ Run:
 import mimetypes
 import os
 
-import config
 import core
 
 # Serve fonts with the correct MIME — some environments have no .woff2 mapping,

@@ -1,0 +1,26 @@
+# Mealie Mixer — tool config. The app runs from source (`python app.py`), so there's
+# no build-system/project block here; this file only configures ruff (lint), so
+# `ruff check .` enforces a consistent, minimal style. See README → Development.
+
+[tool.ruff]
+line-length = 110          # fits the existing descriptive style (prompts/docstrings); still guards runaway lines
+target-version = "py312"   # Dockerfile is python:3.12-slim (the floor); dev venv is 3.14
+extend-exclude = ["venv", "data", "static/vendor"]
+
+[tool.ruff.lint]
+select = [
+  "E", "W",   # pycodestyle errors + warnings
+  "F",        # pyflakes — unused imports/vars, undefined names (real bugs)
+  "I",        # isort — import order
+  "UP",       # pyupgrade — modern syntax (f-strings, PEP 604 unions, etc.)
+  "C4",       # flake8-comprehensions
+]
+ignore = [
+  # The long lines are almost all inside the LLM extraction prompt (extract.build_user_prompt),
+  # written as readable rule paragraphs. Wrapping them would hurt prompt editability for no gain.
+  "E501",
+]
+# Deliberately NOT enabled (too noisy for this codebase):
+#   B   — B008 false-positives on FastAPI's Header()/Form()/Depends() defaults;
+#         B904 churns the intentional fail-soft `raise` pattern used across the API.
+#   SIM — SIM105 wants contextlib.suppress for the deliberate try/except: pass fail-soft.

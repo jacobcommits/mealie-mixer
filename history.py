@@ -13,7 +13,7 @@ so a logging failure can't break a push.
 import json
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import config
 
@@ -70,7 +70,7 @@ def log_import(name, slug, source_url="", mealie_url="", status="success", paylo
                     _normalize_source(source_url),
                     (mealie_url or "").strip(),
                     status,
-                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    datetime.now(UTC).isoformat(timespec="seconds"),
                     json.dumps(payload) if payload is not None else None,
                 ),
             )

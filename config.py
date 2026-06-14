@@ -116,9 +116,7 @@ def hash_password(password: str, iterations: int = 200_000) -> str:
     verify_password() needs nothing else stored."""
     salt = os.urandom(16)
     dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, iterations)
-    return "pbkdf2_sha256${}${}${}".format(
-        iterations, base64.b64encode(salt).decode(), base64.b64encode(dk).decode()
-    )
+    return f"pbkdf2_sha256${iterations}${base64.b64encode(salt).decode()}${base64.b64encode(dk).decode()}"
 
 
 def verify_password(password: str, stored: str) -> bool:

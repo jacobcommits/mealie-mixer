@@ -260,7 +260,8 @@ This app **can write to your Mealie**, and has **no authentication by default**.
 
 ```bash
 pip install -r requirements-dev.txt
-pytest
+pytest            # tests
+ruff check .      # lint (config in pyproject.toml)
 ```
 
 ## License

@@ -56,7 +56,7 @@ def _guess_title(text: str) -> str:
     )
     bad_words = ("calorie", "sodium", "carbohydrate", "saturated fat", "per serving", "www.")
     bullet_chars = "•-–·*0123456789½¼¾⅓⅔⅛"
-    for ln in [l.strip() for l in text.splitlines() if l.strip()][:40]:
+    for ln in [line.strip() for line in text.splitlines() if line.strip()][:40]:
         low = ln.lower()
         if low.startswith(skip_starts):
             continue

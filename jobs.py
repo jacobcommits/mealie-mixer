@@ -13,7 +13,7 @@ import json
 import os
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import config
 
@@ -100,7 +100,7 @@ def start_job(chunks: list[dict], language: str = "English", units_system: str =
     job = {
         "id": job_id, "status": "running", "total": len(chunks), "done": 0, "failed": 0,
         "label": (chunks[0].get("title") or "").strip() if chunks else "",
-        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "recipes": [],
     }
     with _LOCK:
@@ -206,7 +206,7 @@ def start_extract_job(sources: dict, language: str = "English", user_note: str =
     job = {
         "id": job_id, "kind": "extract", "status": "running", "phase": phase,
         "progress": 0.0, "total": 1, "done": 0, "failed": 0, "recipes": [],
-        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     with _LOCK:
         JOBS[job_id] = job
