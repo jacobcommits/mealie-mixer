@@ -20,7 +20,7 @@ COPY requirements-voice.txt .
 RUN if [ "$WITH_VOICE" = "1" ]; then pip install --no-cache-dir -r requirements-voice.txt; fi
 
 # Just the pipeline modules — secrets come from env/volume at runtime, never baked in
-COPY config.py core.py extract.py push.py api.py app.py history.py cookbook.py jobs.py transcribe.py ./
+COPY config.py core.py extract.py push.py api.py app.py history.py cookbook.py jobs.py transcribe.py users.py ./
 COPY static/ ./static/
 
 # Config the setup page persists to (mount a volume here)

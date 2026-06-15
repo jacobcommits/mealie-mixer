@@ -133,7 +133,7 @@ class TestExtractJobEndpoints:
         })
         done = {"id": "abc", "status": "done", "progress": 1.0,
                 "recipes": [{"recipe": {"name": "Cake"}, "image": None}]}
-        monkeypatch.setattr(jobs, "get_job", lambda jid: done if jid == "abc" else None)
+        monkeypatch.setattr(jobs, "get_job", lambda jid, user=None: done if jid == "abc" else None)
         c = TestClient(fastapi_app)
         c.post("/api/login", json={})
         r = c.get("/api/extract/job/abc")

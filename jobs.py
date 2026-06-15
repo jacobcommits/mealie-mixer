@@ -82,26 +82,32 @@ def _process_job(job: dict, chunks: list[dict], language: str, units_system: str
     return job
 
 
-def cancel_job(job_id: str) -> bool:
+def cancel_job(job_id: str, user: str | None = None) -> bool:
     """Ask a running job to stop (checked between recipes — can't interrupt a live LLM
-    call). Returns True if the job was found in memory."""
+    call). Returns True only if the job was found in memory AND (when `user` is given)
+    owned by that user. Legacy jobs (no owner recorded) are cancelable by anyone."""
     with _LOCK:
         job = JOBS.get(job_id)
         if not job:
+            return False
+        if user is not None and job.get("user") not in (None, user):
             return False
         job["cancelled"] = True
         job["status"] = "cancelled"
     return True
 
 
-def start_job(chunks: list[dict], language: str = "English", units_system: str = "metric") -> str:
-    """Create a job for the selected chunks and run it in a daemon thread. Returns the id."""
+def start_job(chunks: list[dict], language: str = "English", units_system: str = "metric",
+              user: str | None = None) -> str:
+    """Create a job for the selected chunks and run it in a daemon thread. Returns the id.
+    `user` is recorded as the owner so list/get can scope to the account that started it."""
     job_id = uuid.uuid4().hex[:12]
     job = {
         "id": job_id, "status": "running", "total": len(chunks), "done": 0, "failed": 0,
         "label": (chunks[0].get("title") or "").strip() if chunks else "",
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "recipes": [],
+        "user": user,
     }
     with _LOCK:
         JOBS[job_id] = job
@@ -110,18 +116,25 @@ def start_job(chunks: list[dict], language: str = "English", units_system: str =
     return job_id
 
 
-def get_job(job_id: str) -> dict | None:
-    """A snapshot of one job (deep-copied under the lock so it's safe to serialize while the
-    thread is still appending)."""
+def get_job(job_id: str, user: str | None = None) -> dict | None:
+    """A snapshot of one job (deep-copied under the lock so it's safe to serialize while
+    the thread is still appending). When `user` is given, returns None unless the job
+    belongs to that user (legacy ownerless jobs are visible to all)."""
     with _LOCK:
         job = JOBS.get(job_id)
-        if job is not None:
-            return json.loads(json.dumps(job))
-    return _load(job_id)
+        snap = json.loads(json.dumps(job)) if job is not None else None
+    if snap is None:
+        snap = _load(job_id)
+    if snap is None:
+        return None
+    if user is not None and snap.get("user") not in (None, user):
+        return None
+    return snap
 
 
-def list_jobs(limit: int = 10) -> list[dict]:
-    """Recent job summaries (no recipe payloads), newest first — disk ∪ memory."""
+def list_jobs(limit: int = 10, user: str | None = None) -> list[dict]:
+    """Recent job summaries (no recipe payloads), newest first — disk ∪ memory. When
+    `user` is given, only that user's jobs are listed (legacy ownerless jobs included)."""
     found: dict[str, dict] = {}
     try:
         for fn in os.listdir(_jobs_dir()):
@@ -133,7 +146,10 @@ def list_jobs(limit: int = 10) -> list[dict]:
         pass
     with _LOCK:
         found.update(JOBS)   # in-memory is fresher
-    ordered = sorted(found.values(), key=lambda j: j.get("created_at", ""), reverse=True)[:limit]
+    ordered = sorted(found.values(), key=lambda j: j.get("created_at", ""), reverse=True)
+    if user is not None:
+        ordered = [j for j in ordered if j.get("user") in (None, user)]
+    ordered = ordered[:limit]
     return [{k: j.get(k) for k in SUMMARY_KEYS} for j in ordered]
 
 
@@ -195,8 +211,10 @@ def _process_extract_job(job, sources, language, user_note, known_categories, un
 
 
 def start_extract_job(sources: dict, language: str = "English", user_note: str = "",
-                     known_categories=(), units_system: str = "metric") -> str:
-    """Kick off a combine extraction in a daemon thread; returns the id the browser polls."""
+                     known_categories=(), units_system: str = "metric",
+                     user: str | None = None) -> str:
+    """Kick off a combine extraction in a daemon thread; returns the id the browser polls.
+    `user` is recorded as the owner so the status poll can scope to the starter."""
     job_id = uuid.uuid4().hex[:12]
     # Opening phase reflects the first slow step the job will hit (audio dominates; else a
     # link fetch; else straight to the LLM call).
@@ -207,6 +225,7 @@ def start_extract_job(sources: dict, language: str = "English", user_note: str =
         "id": job_id, "kind": "extract", "status": "running", "phase": phase,
         "progress": 0.0, "total": 1, "done": 0, "failed": 0, "recipes": [],
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "user": user,
     }
     with _LOCK:
         JOBS[job_id] = job

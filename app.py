@@ -42,6 +42,16 @@ def create_app():
 
     app.include_router(api_router)
 
+    # One-time migration: seed the first admin from the legacy single-user login
+    # (if any) so an upgrading deploy keeps its login. No-op once a user exists or
+    # if there's no legacy login. Best-effort — a /data we can't write to just
+    # means the legacy fallback in users.verify() carries the login instead.
+    try:
+        import users
+        users.ensure_bootstrap()
+    except Exception as exc:  # noqa: BLE001 — never block boot on account migration
+        print(f"  ! user-store bootstrap skipped: {exc}", flush=True)
+
     # The web UI (static/) at / — mounted LAST so /api/* and /docs win over this
     # catch-all. Dir resolved next to this file (→ /app/static in the container).
     static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")

@@ -120,3 +120,39 @@ def test_process_extract_job_error_cleans_up(tmp_path, monkeypatch):
     assert out["status"] == "error" and out["failed"] == 1
     assert out["error"] == "no speech"
     assert not audio.exists()              # temp upload(s) cleaned up even on failure
+
+
+# ── per-user ownership (v0.15.0) ─────────────────────────────────────────
+
+def test_get_job_is_owner_scoped(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    jobs.JOBS.clear()
+    jobs.JOBS["mine"] = {"id": "mine", "status": "running", "user": "alice"}
+    jobs.JOBS["legacy"] = {"id": "legacy", "status": "running", "user": None}
+    assert jobs.get_job("mine", user="alice") is not None       # owner
+    assert jobs.get_job("mine", user="bob") is None             # not the owner
+    assert jobs.get_job("mine") is not None                     # user=None = unscoped
+    # legacy ownerless jobs are visible to everyone (back-compat)
+    assert jobs.get_job("legacy", user="bob") is not None
+
+
+def test_list_jobs_scoped_per_user(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    jobs.JOBS.clear()
+    jobs.JOBS["a1"] = {"id": "a1", "status": "running", "user": "alice", "created_at": "1"}
+    jobs.JOBS["b1"] = {"id": "b1", "status": "running", "user": "bob", "created_at": "2"}
+    jobs.JOBS["leg"] = {"id": "leg", "status": "running", "user": None, "created_at": "3"}
+    alice = [j["id"] for j in jobs.list_jobs(user="alice")]
+    assert "a1" in alice and "leg" in alice and "b1" not in alice
+    assert len(jobs.list_jobs()) == 3                          # unscoped = all
+
+
+def test_cancel_job_owner_scoped(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    jobs.JOBS.clear()
+    jobs.JOBS["mine"] = {"id": "mine", "status": "running", "user": "alice", "cancelled": False}
+    assert jobs.cancel_job("mine", user="alice") is True
+    assert jobs.cancel_job("mine", user="bob") is False        # can't cancel someone else's
+    # legacy ownerless job is cancelable by anyone
+    jobs.JOBS["leg"] = {"id": "leg", "status": "running", "user": None, "cancelled": False}
+    assert jobs.cancel_job("leg", user="bob") is True

@@ -39,13 +39,26 @@ def _conn() -> sqlite3.Connection:
             mealie_url TEXT,
             status TEXT,
             created_at TEXT,
-            payload TEXT
+            payload TEXT,
+            user TEXT
         )"""
     )
-    # Migration: DBs created before the discard-restore feature lack `payload`.
+    # Migrations for DBs created before later features:
     cols = [r[1] for r in conn.execute("PRAGMA table_info(imports)").fetchall()]
     if "payload" not in cols:
         conn.execute("ALTER TABLE imports ADD COLUMN payload TEXT")
+    if "user" not in cols:
+        conn.execute("ALTER TABLE imports ADD COLUMN user TEXT")
+        # Backfill legacy (pre-multi-user) rows to the first admin so an upgrader
+        # keeps their old import history visible. Runs once, with the column add —
+        # by this point app startup has already bootstrapped the admin into the store.
+        try:
+            import users
+            admins = [u for u in users.list_users() if u["is_admin"]]
+            if admins:
+                conn.execute("UPDATE imports SET user = ? WHERE user IS NULL", (admins[0]["username"],))
+        except Exception:
+            pass  # best-effort — legacy rows just stay unassigned
     return conn
 
 
@@ -54,16 +67,17 @@ def _normalize_source(url: str) -> str:
     return (url or "").strip().rstrip("/")
 
 
-def log_import(name, slug, source_url="", mealie_url="", status="success", payload=None) -> None:
+def log_import(name, slug, source_url="", mealie_url="", status="success", payload=None, user=None) -> None:
     """Record one import. `payload` (the full review recipe) is stored as JSON for
-    "discarded" entries so a misclick can be restored. Best-effort: callers swallow
-    exceptions (a logging failure must never break a push)."""
+    "discarded" entries so a misclick can be restored. `user` scopes it to an account
+    (multi-user). Best-effort: callers swallow exceptions (a logging failure must
+    never break a push)."""
     conn = _conn()
     try:
         with conn:  # commits the transaction
             conn.execute(
-                "INSERT INTO imports (name, slug, source_url, mealie_url, status, created_at, payload)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO imports (name, slug, source_url, mealie_url, status, created_at, payload, user)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     (name or "").strip(),
                     (slug or "").strip(),
@@ -72,40 +86,53 @@ def log_import(name, slug, source_url="", mealie_url="", status="success", paylo
                     status,
                     datetime.now(UTC).isoformat(timespec="seconds"),
                     json.dumps(payload) if payload is not None else None,
+                    user,
                 ),
             )
     finally:
         conn.close()
 
 
-def list_imports(limit: int = 500) -> list[dict]:
+def list_imports(limit: int = 500, user: str | None = None) -> list[dict]:
     """Recent imports, newest first, as plain dicts. Excludes the heavy `payload`
-    (fetch a single entry's payload via get_import() when restoring)."""
+    (fetch a single entry's payload via get_import() when restoring). When `user` is
+    given, only that user's imports are returned (per-user history); user=None returns
+    all (used only in the open / first-run state with no accounts)."""
     conn = _conn()
     try:
-        rows = conn.execute(
-            "SELECT id, name, slug, source_url, mealie_url, status, created_at"
-            " FROM imports ORDER BY id DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
+        if user is not None:
+            rows = conn.execute(
+                "SELECT id, name, slug, source_url, mealie_url, status, created_at"
+                " FROM imports WHERE user = ? ORDER BY id DESC LIMIT ?",
+                (user, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, name, slug, source_url, mealie_url, status, created_at"
+                " FROM imports ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
 
 
-def get_import(item_id: int) -> dict | None:
+def get_import(item_id: int, user: str | None = None) -> dict | None:
     """One import by id, with its `payload` parsed back to a dict (or None). Used to
-    restore a discarded recipe into the review screen."""
+    restore a discarded recipe into the review screen. When `user` is given, returns
+    None unless the entry belongs to that user (ownership check)."""
     conn = _conn()
     try:
         row = conn.execute(
-            "SELECT id, name, slug, source_url, mealie_url, status, created_at, payload"
+            "SELECT id, name, slug, source_url, mealie_url, status, created_at, payload, user"
             " FROM imports WHERE id = ?",
             (item_id,),
         ).fetchone()
     finally:
         conn.close()
     if not row:
+        return None
+    if user is not None and (row["user"] or "") != user:
         return None
     d = dict(row)
     raw = d.get("payload")
@@ -116,21 +143,30 @@ def get_import(item_id: int) -> dict | None:
     return d
 
 
-def find_recent_by_source(source_url: str) -> dict | None:
+def find_recent_by_source(source_url: str, user: str | None = None) -> dict | None:
     """Most recent SUCCESSFUL import whose source matches this URL (normalised), or
     None. Discarded entries don't count as "already imported". Blank URLs never match
-    — image/text imports have no stable identity and aren't deduped."""
+    — image/text imports have no stable identity and aren't deduped. When `user` is
+    given, only that user's imports are considered."""
     key = _normalize_source(source_url)
     if not key:
         return None
     conn = _conn()
     try:
-        row = conn.execute(
-            "SELECT id, name, slug, source_url, mealie_url, status, created_at"
-            " FROM imports WHERE source_url = ? AND status = 'success'"
-            " ORDER BY id DESC LIMIT 1",
-            (key,),
-        ).fetchone()
+        if user is not None:
+            row = conn.execute(
+                "SELECT id, name, slug, source_url, mealie_url, status, created_at"
+                " FROM imports WHERE source_url = ? AND status = 'success' AND user = ?"
+                " ORDER BY id DESC LIMIT 1",
+                (key, user),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT id, name, slug, source_url, mealie_url, status, created_at"
+                " FROM imports WHERE source_url = ? AND status = 'success'"
+                " ORDER BY id DESC LIMIT 1",
+                (key,),
+            ).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()

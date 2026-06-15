@@ -60,3 +60,34 @@ def test_discarded_not_counted_as_already_imported(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
     history.log_import("Tossed", "", "https://x.test/keep", "", status="discarded", payload={"name": "Tossed"})
     assert history.find_recent_by_source("https://x.test/keep") is None  # discards don't dedupe
+
+
+# ── per-user scoping (v0.15.0) ──────────────────────────────────────────
+
+def test_list_imports_scoped_per_user(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    history.log_import("A", "a", user="alice")
+    history.log_import("B", "b", user="bob")
+    history.log_import("A2", "a2", user="alice")
+    assert [r["name"] for r in history.list_imports(user="alice")] == ["A2", "A"]
+    assert [r["name"] for r in history.list_imports(user="bob")] == ["B"]
+    # user=None returns everything (open / first-run mode)
+    assert len(history.list_imports()) == 3
+
+
+def test_get_import_is_owner_scoped(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    history.log_import("A", "a", user="alice")
+    row_id = history.list_imports(user="alice")[0]["id"]
+    assert history.get_import(row_id, user="alice") is not None       # owner
+    assert history.get_import(row_id, user="bob") is None             # not the owner
+    assert history.get_import(row_id) is not None                     # user=None = open mode
+
+
+def test_find_recent_by_source_scoped_per_user(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    history.log_import("Alice's cake", "cake", "https://x.test/cake", user="alice")
+    # same URL, different user → doesn't show as "already imported" for alice
+    history.log_import("Bob's cake", "cake-b", "https://x.test/cake", user="bob")
+    assert history.find_recent_by_source("https://x.test/cake", user="alice")["slug"] == "cake"
+    assert history.find_recent_by_source("https://x.test/cake", user="bob")["slug"] == "cake-b"

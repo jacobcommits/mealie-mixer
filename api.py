@@ -31,6 +31,7 @@ import core
 import history
 import jobs
 import transcribe
+import users
 from extract import (
     extract_recipes_from_sources,
     extract_recipes_from_text,
@@ -163,12 +164,34 @@ def require_access(request: Request,
 
 
 def require_ui(request: Request) -> None:
-    """UI/config endpoints: allow a browser session, or open if no login is set."""
+    """UI/config endpoints: allow a browser session, or open if no users exist yet
+    (and no legacy login is set) — i.e. first-run state. Otherwise login is required."""
     if request.session.get("authed"):
         return
-    if not config.get("MIXER_AUTH_USER"):
+    if not users.login_required():
         return
     raise HTTPException(status_code=401, detail="Log in required.")
+
+
+def require_admin(request: Request) -> None:
+    """Admin-only endpoints (user management): a logged-in admin session. Re-checks
+    the store so a demoted/deleted admin's existing session stops working."""
+    if not request.session.get("authed") or not request.session.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    user = users.get(request.session.get("user") or "")
+    if not user or not user["is_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+
+
+def _effective_user(request: Request) -> str | None:
+    """Who an action is attributed to: the logged-in user, or — for an API-key call
+    with no session — the first admin, so agent-driven imports still get tracked in
+    someone's history. None only when there are no users at all (open/first-run)."""
+    user = request.session.get("user")
+    if user:
+        return user
+    admins = [u for u in users.list_users() if u["is_admin"]]
+    return admins[0]["username"] if admins else None
 
 
 class LoginBody(BaseModel):
@@ -186,6 +209,20 @@ class ConfigBody(BaseModel):
     auth_pass: str = ""
     api_key: str = ""
     ai_rpm: str = ""
+
+
+class UserCreateBody(BaseModel):
+    username: str
+    password: str
+    is_admin: bool = False
+
+
+class UserPasswordBody(BaseModel):
+    password: str
+
+
+class UserAdminBody(BaseModel):
+    is_admin: bool
 
 
 router = APIRouter(prefix="/api")
@@ -326,6 +363,7 @@ async def _collect_sources(files, audio, tmp_paths):
 
 @router.post("/extract/job", dependencies=[Depends(require_access)])
 async def api_extract_job(
+    request: Request,
     files: list[UploadFile] | None = File(None),
     url: str | None = Form(None),
     text: str | None = Form(None),
@@ -336,8 +374,8 @@ async def api_extract_job(
 ):
     """Start a background combine-extraction job: any mix of image/document files, a url,
     text, and a voice note / screen-recording. Slow sources (whisper transcription, link
-    scraping) run off the request; the browser polls ``GET /api/extract/job/{job_id}`` and
-    shows a progress bar. Agents can use the synchronous /api/extract instead."""
+    scraping) run off the request; the browser polls ``GET /api/extract/job/{job_id}``
+    and shows a progress bar. Agents can use the synchronous /api/extract instead."""
     if audio is not None and not transcribe.is_available():
         raise HTTPException(
             status_code=503, detail="Voice transcription isn't enabled in this build.",
@@ -358,15 +396,16 @@ async def api_extract_job(
     }
     job_id = jobs.start_extract_job(
         sources, language=language, user_note=prompt, known_categories=known_categories,
-        units_system=units_system,
+        units_system=units_system, user=_effective_user(request),
     )
     return {"job_id": job_id}
 
 
 @router.get("/extract/job/{job_id}", dependencies=[Depends(require_access)])
-def api_extract_job_status(job_id: str):
-    """Status + (when done) structured recipes for a combine-extraction job."""
-    job = jobs.get_job(job_id)
+def api_extract_job_status(request: Request, job_id: str):
+    """Status + (when done) structured recipes for a combine-extraction job.
+    Ownership-checked against the logged-in user (or open for an agent key)."""
+    job = jobs.get_job(job_id, user=_effective_user(request))
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
     return job
@@ -377,7 +416,7 @@ def api_extract_job_status(job_id: str):
     response_model=PushResponse,
     dependencies=[Depends(require_access)],
 )
-def api_push(recipe: Recipe):
+def api_push(request: Request, recipe: Recipe):
     """Push a recipe to Mealie.  Returns the slug and full URL."""
     # Convert the Pydantic model back to the dict shape push_recipe expects.
     recipe_dict = recipe.model_dump(by_alias=True)
@@ -401,6 +440,7 @@ def api_push(recipe: Recipe):
             name=recipe.name, slug=slug,
             source_url=recipe.source_url, mealie_url=url,
             payload=recipe_dict,   # store the pushed recipe so history can preview it
+            user=_effective_user(request),
         )
     except Exception:
         pass
@@ -412,19 +452,19 @@ def api_push(recipe: Recipe):
 
 @router.post("/login")
 def api_login(request: Request, body: LoginBody):
-    """Establish a browser session. If no login is configured, any call grants
-    an (open) session; otherwise the username + password are verified."""
-    user = config.get("MIXER_AUTH_USER")
-    if not user:
+    """Establish a browser session. No users (and no legacy login) yet → any call
+    grants an open session so the setup page works; otherwise credentials are
+    checked against the user store (which falls back to the legacy single login)."""
+    if not users.login_required():
         request.session["authed"] = True
         return {"ok": True, "login_required": False}
-    if body.username == user and config.verify_password(
-        body.password or "", config.get("MIXER_AUTH_PASS_HASH")
-    ):
-        request.session["authed"] = True
-        request.session["user"] = user
-        return {"ok": True, "login_required": True}
-    raise HTTPException(status_code=401, detail="Invalid username or password.")
+    info = users.verify(body.username or "", body.password or "")
+    if not info:
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+    request.session["authed"] = True
+    request.session["user"] = info["username"]
+    request.session["is_admin"] = info["is_admin"]
+    return {"ok": True, "login_required": True, "is_admin": info["is_admin"]}
 
 
 @router.post("/logout")
@@ -437,11 +477,13 @@ def api_logout(request: Request):
 def api_get_config(request: Request):
     """Gate info for the UI. Open returns only {configured, login_required};
     settings fields (never secret *values*) are added once authed/open."""
-    authed = bool(request.session.get("authed")) or not config.get("MIXER_AUTH_USER")
+    authed = bool(request.session.get("authed")) or not users.login_required()
     out = {
         "configured": config.is_configured(),
-        "login_required": bool(config.get("MIXER_AUTH_USER")),
+        "login_required": users.login_required(),
         "authed": authed,
+        "is_admin": bool(request.session.get("is_admin")),
+        "user": request.session.get("user"),
         "voice": transcribe.is_available(),   # is the voice-note feature usable in this build?
     }
     if authed:
@@ -472,6 +514,18 @@ def api_set_config(body: ConfigBody):
         raise HTTPException(status_code=400, detail=str(e))
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"Couldn't write config: {e}")
+    # Mirror the legacy single-login into the multi-user store so the admin shows up
+    # immediately (no restart needed for bootstrap) and can manage family members from
+    # the Users screen. Best-effort — a failure here must not block a config save.
+    if body.auth_user and body.auth_pass:
+        try:
+            if users.get(body.auth_user):
+                users.set_password(body.auth_user, body.auth_pass)
+                users.set_admin(body.auth_user, True)
+            else:
+                users.create_user(body.auth_user, body.auth_pass, is_admin=True)
+        except Exception:
+            pass
     return {"ok": True, "configured": config.is_configured()}
 
 
@@ -495,6 +549,68 @@ def api_test_ai(body: ConfigBody):
 @router.post("/config/generate-key", dependencies=[Depends(require_ui)])
 def api_generate_key():
     return {"key": core.generate_api_key()}
+
+
+# ── User management (v0.15.0 multi-user) ──────────────────────────────────
+
+@router.post("/users/first", dependencies=[Depends(require_ui)])
+def api_create_first_admin(body: UserCreateBody):
+    """First-run bootstrap: create the very first admin. Only works while the account
+    store is empty (open state); once any user exists, sign in as an admin and use
+    POST /api/users instead. require_ui passes in the open state."""
+    if users.login_required():
+        raise HTTPException(status_code=409, detail="Accounts already exist — sign in as an admin to add more.")
+    ok, msg = users.create_user(body.username, body.password, is_admin=True)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"ok": True, "message": msg}
+
+
+@router.get("/users", dependencies=[Depends(require_admin)])
+def api_users():
+    """List accounts (no secret values) — admin only."""
+    return {"users": users.list_users()}
+
+
+@router.post("/users", dependencies=[Depends(require_admin)])
+def api_create_user(body: UserCreateBody):
+    """Add a family-member account — admin only."""
+    ok, msg = users.create_user(body.username, body.password, is_admin=body.is_admin)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"ok": True, "message": msg, "users": users.list_users()}
+
+
+@router.post("/users/{username}/password", dependencies=[Depends(require_admin)])
+def api_set_user_password(username: str, body: UserPasswordBody):
+    """Reset a user's password — admin only."""
+    ok, msg = users.set_password(username, body.password)
+    if not ok:
+        raise HTTPException(status_code=404, detail=msg)
+    return {"ok": True, "message": msg}
+
+
+@router.post("/users/{username}/admin", dependencies=[Depends(require_admin)])
+def api_set_user_admin(username: str, body: UserAdminBody):
+    """Promote/demote a user — admin only. The last-admin guard lives in the store."""
+    ok, msg = users.set_admin(username, body.is_admin)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"ok": True, "message": msg, "users": users.list_users()}
+
+
+@router.delete("/users/{username}", dependencies=[Depends(require_admin)])
+def api_delete_user(request: Request, username: str):
+    """Delete a user — admin only. Can't delete yourself or the last admin."""
+    if (request.session.get("user") or "").lower() == (username or "").lower():
+        raise HTTPException(
+            status_code=400,
+            detail="You can't delete your own account — log in as another admin first.",
+        )
+    ok, msg = users.delete_user(username)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"ok": True, "message": msg, "users": users.list_users()}
 
 
 @router.get("/foods", dependencies=[Depends(require_access)])
@@ -577,7 +693,7 @@ def api_restandardize(body: RestandardizeBody):
 
 
 @router.post("/recipes/{slug}/update", dependencies=[Depends(require_access)])
-def api_update_recipe(slug: str, recipe: Recipe):
+def api_update_recipe(request: Request, slug: str, recipe: Recipe):
     """Update an existing Mealie recipe in place (B9). Returns the slug
     and full URL. Does NOT create a new recipe or delete on failure."""
     recipe_dict = recipe.model_dump(by_alias=True)
@@ -598,6 +714,7 @@ def api_update_recipe(slug: str, recipe: Recipe):
             name=recipe.name, slug=result_slug,
             source_url=recipe.source_url, mealie_url=url,
             status="updated", payload=recipe_dict,
+            user=_effective_user(request),
         )
     except Exception:
         pass
@@ -640,52 +757,56 @@ class CookbookJobBody(BaseModel):
 
 
 @router.post("/cookbook/job", dependencies=[Depends(require_access)])
-def api_cookbook_job(body: CookbookJobBody):
+def api_cookbook_job(request: Request, body: CookbookJobBody):
     """Start a background structuring job for the selected cookbook chunks (B7 Phase B).
     Returns a job_id the browser polls; the run survives closing the tab."""
     if not body.recipes:
         raise HTTPException(status_code=400, detail="No recipes selected to process.")
-    return {"job_id": jobs.start_job(body.recipes, body.language, body.units_system)}
+    return {"job_id": jobs.start_job(body.recipes, body.language, body.units_system,
+                                     user=_effective_user(request))}
 
 
 @router.get("/cookbook/job/{job_id}", dependencies=[Depends(require_access)])
-def api_cookbook_job_status(job_id: str):
-    """Status + (when done) structured recipes for a cookbook job."""
-    job = jobs.get_job(job_id)
+def api_cookbook_job_status(request: Request, job_id: str):
+    """Status + (when done) structured recipes for a cookbook job. Ownership-checked."""
+    job = jobs.get_job(job_id, user=_effective_user(request))
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
     return job
 
 
 @router.post("/cookbook/job/{job_id}/cancel", dependencies=[Depends(require_access)])
-def api_cookbook_job_cancel(job_id: str):
-    """Stop a running cookbook job (e.g. wrong book uploaded)."""
-    jobs.cancel_job(job_id)
+def api_cookbook_job_cancel(request: Request, job_id: str):
+    """Stop a running cookbook job (e.g. wrong book uploaded). Ownership-checked."""
+    jobs.cancel_job(job_id, user=_effective_user(request))
     return {"ok": True}
 
 
 @router.get("/cookbook/jobs", dependencies=[Depends(require_access)])
-def api_cookbook_jobs():
-    """Recent cookbook job summaries — powers the 'ready to review' banner/badge."""
-    return {"jobs": jobs.list_jobs()}
+def api_cookbook_jobs(request: Request):
+    """Recent cookbook job summaries — powers the 'ready to review' banner/badge.
+    Scoped to the logged-in user."""
+    return {"jobs": jobs.list_jobs(user=_effective_user(request))}
 
 
 @router.get("/history", dependencies=[Depends(require_access)])
-def api_history():
+def api_history(request: Request):
     """Recent import history (B4) — powers the history screen + dedupe warning.
-    Session or key auth, like the other UI data endpoints."""
-    return {"items": history.list_imports()}
+    Scoped to the logged-in user (per-user history); session or key auth."""
+    return {"items": history.list_imports(user=_effective_user(request))}
 
 
 @router.post("/history/discard", dependencies=[Depends(require_access)])
-def api_history_discard(item: dict = Body(...)):
+def api_history_discard(request: Request, item: dict = Body(...)):
     """Stash a discarded review recipe so a misclick can be restored. Stores the
-    recipe verbatim (free-form, not the strict Recipe model) for faithful restore."""
+    recipe verbatim (free-form, not the strict Recipe model) for faithful restore.
+    Scoped to the logged-in user."""
     try:
         history.log_import(
             name=item.get("name") or "", slug="",
             source_url=item.get("source_url") or "", mealie_url="",
             status="discarded", payload=item,
+            user=_effective_user(request),
         )
     except Exception:
         pass  # best-effort, never block the discard
@@ -693,9 +814,10 @@ def api_history_discard(item: dict = Body(...)):
 
 
 @router.get("/history/{item_id}", dependencies=[Depends(require_access)])
-def api_history_item(item_id: int):
-    """One history entry incl. its stored recipe payload — used to restore a discard."""
-    row = history.get_import(item_id)
+def api_history_item(request: Request, item_id: int):
+    """One history entry incl. its stored recipe payload — used to restore a discard.
+    Ownership-checked against the logged-in user."""
+    row = history.get_import(item_id, user=_effective_user(request))
     if not row:
         raise HTTPException(status_code=404, detail="History entry not found.")
     return row
