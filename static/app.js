@@ -20,7 +20,7 @@ function mixer() {
     genKeyMsg: '', cfgMsg: '',
     // recipe input
     fileList: null, url: '', pastedText: '', language: 'English', unitsSystem: 'metric', prompt: '',
-    recording: false, audioBlob: null, audioUrl: '', recElapsed: 0, audioProgress: 0,   // voice note (B3)
+    recording: false, audioBlob: null, audioUrl: '', recElapsed: 0, audioProgress: 0, jobActive: false,   // voice note (B3) + tab-close resume
     // review
     recipe: emptyRecipe(), instructionsText: '', queue: [],
     photoFile: null, photoPreview: '', categoryInput: '',
@@ -55,6 +55,9 @@ function mixer() {
       this.restoreSession();
       // a saved cookbook review wins; otherwise pick up a running/done job (close & come back)
       if (!(await this.cbRestoreReview())) this.cbResume();
+      // re-attach to an in-flight voice-note / combine extract job, unless something already
+      // claimed the screen (a restored in-progress review or a cookbook job).
+      if (this.view === 'input') await this.audioResume();
       await this.maybeReadShare();
     },
     async doLogin() {
@@ -271,6 +274,8 @@ function mixer() {
         const r = await fetch('/api/extract/job', { method: 'POST', body: fd, credentials: 'same-origin' });
         if (!r.ok) throw new Error(await detail(r));
         this._extractJob = (await r.json()).job_id;
+        this.jobActive = true;
+        try { localStorage.setItem('mm-extract-job', this._extractJob); } catch (_) {}   // tab-close resume
         this.jobPoll();
       } catch (e) { this.error = String(e.message || e); this.loading = false; }
     },
@@ -278,7 +283,7 @@ function mixer() {
       const jid = this._extractJob; if (!jid) return;
       let job;
       try { job = await getJSON('/api/extract/job/' + jid); }
-      catch (e) { this.error = String(e.message || e); this.loading = false; this._extractJob = null; return; }
+      catch (e) { this.error = String(e.message || e); this.loading = false; this._clearExtractJob(); return; }
       this.audioProgress = job.progress || 0;
       this.loadingMsg = ({
         'fetching link': 'Fetching the link…',
@@ -286,17 +291,39 @@ function mixer() {
         'structuring': 'Structuring the recipe…',
       })[job.phase] || 'Working…';
       if (job.status === 'done') {
-        this.loading = false; this.audioProgress = 0; this._extractJob = null;
+        this.loading = false; this.audioProgress = 0; this._clearExtractJob();
         const recipes = (job.recipes || []).map(x => x.recipe);
         if (!recipes.length) { this.error = 'No recipe found — try adding a clearer source.'; return; }
         this.queue = recipes.slice(1); this.updateMode = null; this.loadRecipe(recipes[0]); this.view = 'review';
         return;
       }
       if (job.status === 'error') {
-        this.loading = false; this.audioProgress = 0; this._extractJob = null;
+        this.loading = false; this.audioProgress = 0; this._clearExtractJob();
         this.error = job.error || 'Extraction failed.'; return;
       }
       this._extractTimer = setTimeout(() => this.jobPoll(), 1500);
+    },
+    _clearExtractJob() { this._extractJob = null; this.jobActive = false; try { localStorage.removeItem('mm-extract-job'); } catch (_) {} },
+    // Tab-close resume: a voice-note / combine extract runs as a server job persisted to /data,
+    // so if the tab is closed and reopened we re-attach to it and pick the progress back up
+    // (mirrors the cookbook job resume). jobPoll handles every outcome (progress / review / error).
+    async audioResume() {
+      let jid; try { jid = localStorage.getItem('mm-extract-job'); } catch (_) {}
+      if (!jid) return;
+      try { await getJSON('/api/extract/job/' + jid); }   // still there? (404 once the job is gone)
+      catch (_) { this._clearExtractJob(); return; }       // stale id — drop it silently, no error banner
+      this._extractJob = jid; this.jobActive = true;
+      this.loading = true; this.loadingMsg = 'Working…'; this.audioProgress = 0;
+      this.jobPoll();
+    },
+    // Escape hatch on the progress overlay: stop waiting. Detaches the browser only — there is no
+    // server-side cancel for a single in-flight LLM call (closing the tab has the same effect), but
+    // it frees the user from a job that can't finish (e.g. the server was restarted mid-transcription).
+    cancelExtractJob() {
+      try { clearTimeout(this._extractTimer); } catch (_) {}
+      this._clearExtractJob();
+      this.loading = false; this.audioProgress = 0; this.loadingMsg = '';
+      this.view = 'input'; this.showToast('Stopped waiting for the import');
     },
     // ── voice note (B3) ──────────────────────────────────────────────────
     async toggleRecord() {
