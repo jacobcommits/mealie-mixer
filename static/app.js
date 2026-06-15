@@ -9,6 +9,7 @@ function mixer() {
     categories: [],
     recipeNames: [],
     history: [],
+    users: [], newUser: { username: '', password: '' }, userMsg: '',   // admin user management (v0.15.0)
     expandedId: null, payloads: {},   // history-row preview (lazy-loaded by id)
     // config / auth
     cfgInfo: {},
@@ -92,6 +93,59 @@ function mixer() {
       this.menuOpen = false; this.expandedId = null;
       try { this.history = (await getJSON('/api/history')).items || []; } catch (_) {}
       this.error = ''; this.view = 'history';
+    },
+    async openUsers() {
+      this.menuOpen = false; this.error = ''; this.userMsg = '';
+      this.newUser = { username: '', password: '' };
+      this.loadingMsg = 'Loading users…'; this.loading = true;
+      try {
+        this.users = (await getJSON('/api/users')).users || [];
+        this.view = 'users';
+      } catch (e) { this.error = 'Could not load users: ' + (e.message || e); }
+      finally { this.loading = false; }
+    },
+    async addUser() {
+      this.error = ''; this.userMsg = '';
+      const username = (this.newUser.username || '').trim();
+      if (!username || !this.newUser.password) { this.error = 'Enter a username and a password.'; return; }
+      try {
+        const r = await api('/api/users', { method: 'POST', body: JSON.stringify({ username, password: this.newUser.password, is_admin: false }) });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+        this.users = j.users || []; this.newUser = { username: '', password: '' };
+        this.userMsg = 'Added "' + username + '".';
+      } catch (e) { this.error = String(e.message || e); }
+    },
+    async resetUserPassword(u) {
+      const pw = window.prompt('New password for "' + u.username + '":', '');
+      if (pw == null) return;
+      if (!pw) { this.error = "Password can't be empty."; return; }
+      this.error = '';
+      try {
+        const r = await api('/api/users/' + encodeURIComponent(u.username) + '/password', { method: 'POST', body: JSON.stringify({ password: pw }) });
+        if (!r.ok) throw new Error(await detail(r));
+        this.showToast('Password reset for "' + u.username + '"');
+      } catch (e) { this.error = String(e.message || e); }
+    },
+    async toggleAdmin(u) {
+      this.error = '';
+      try {
+        const r = await api('/api/users/' + encodeURIComponent(u.username) + '/admin', { method: 'POST', body: JSON.stringify({ is_admin: !u.is_admin }) });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+        this.users = j.users || [];
+      } catch (e) { this.error = String(e.message || e); }
+    },
+    async deleteUser(u) {
+      if (!confirm('Delete user "' + u.username + '"? This can\'t be undone.')) return;
+      this.error = '';
+      try {
+        const r = await api('/api/users/' + encodeURIComponent(u.username), { method: 'DELETE' });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+        this.users = j.users || [];
+        this.showToast('Deleted "' + u.username + '"');
+      } catch (e) { this.error = String(e.message || e); }
     },
     goHome() {
       if (['gate', 'login', 'setup'].includes(this.view)) return;   // not navigable yet
