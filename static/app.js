@@ -30,6 +30,7 @@ function mixer() {
     commonUnits: ['g', 'ml', 'tbsp', 'tsp', 'cup', 'clove', 'slice', 'piece', 'can', 'pinch', 'pack', 'head', 'stick', 'rasher', 'kg', 'l', 'oz', 'lb', 'fl oz'],
     foodPickerModal: false, foodPickerSearch: '', foodPickerTargetIng: null,
     dupModal: false, _dupOk: false,
+    cropModal: false, cropSrc: '', cropAngle: 0, cropMargins: { top: 0, bottom: 0, left: 0, right: 0 },
     // cookbook (B7, dev)
     cbRecipes: [], cbStructured: [], cbExpanded: null, cbEditIndex: null, cookbookJob: null, cbReviewJobId: '',
     // done
@@ -86,6 +87,7 @@ function mixer() {
         ai_base: c.ai_base_url || 'https://generativelanguage.googleapis.com/v1beta/openai/',
         ai_model: c.ai_model || 'gemini-3.1-flash-lite',
         ai_rpm: c.ai_rpm || '',
+        ai_rules: c.ai_rules || '',
         auth_user: c.auth_user || '', auth_pass: '',
       };
     },
@@ -466,6 +468,78 @@ function mixer() {
     autoPhotoWarn() {  // an auto-grabbed thumbnail from a social post (often not the dish)
       return !this.photoFile && !!this.recipe.image_url &&
         /(instagram|tiktok|youtube|youtu\.be|facebook|fb\.watch)/i.test(this.recipe.source_url || '');
+    },
+
+    // ── Image Cropper & Photo Refinement (v0.21.0) ────────────────────────
+    openCrop(src) {
+      if (!src) return;
+      this.cropSrc = src;
+      this.cropAngle = 0;
+      this.cropMargins = { top: 0, bottom: 0, left: 0, right: 0 };
+      this.cropModal = true;
+      this.$nextTick(() => this.renderCropCanvas());
+    },
+    rotateCrop() {
+      this.cropAngle = (this.cropAngle + 90) % 360;
+      this.renderCropCanvas();
+    },
+    resetCrop() {
+      this.cropAngle = 0;
+      this.cropMargins = { top: 0, bottom: 0, left: 0, right: 0 };
+      this.renderCropCanvas();
+    },
+    renderCropCanvas() {
+      const canvas = this.$refs.cropCanvas;
+      if (!canvas || !this.cropSrc) return;
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const rad = (this.cropAngle * Math.PI) / 180;
+        const swap = (this.cropAngle / 90) % 2 !== 0;
+        const width = swap ? img.height : img.width;
+        const height = swap ? img.width : img.height;
+        canvas.width = width;
+        canvas.height = height;
+
+        ctx.save();
+        ctx.translate(width / 2, height / 2);
+        ctx.rotate(rad);
+        ctx.drawImage(img, -img.width / 2, -img.height / 2);
+        ctx.restore();
+      };
+      img.src = this.cropSrc;
+    },
+    applyCrop() {
+      const sourceCanvas = this.$refs.cropCanvas;
+      if (!sourceCanvas) return;
+      const m = this.cropMargins;
+      const x = (m.left / 100) * sourceCanvas.width;
+      const y = (m.top / 100) * sourceCanvas.height;
+      const w = sourceCanvas.width * (1 - (m.left + m.right) / 100);
+      const h = sourceCanvas.height * (1 - (m.top + m.bottom) / 100);
+
+      if (w <= 10 || h <= 10) {
+        this.showToast('Crop region too small');
+        return;
+      }
+
+      const outCanvas = document.createElement('canvas');
+      outCanvas.width = Math.round(w);
+      outCanvas.height = Math.round(h);
+      const outCtx = outCanvas.getContext('2d');
+      outCtx.drawImage(sourceCanvas, Math.round(x), Math.round(y), Math.round(w), Math.round(h), 0, 0, Math.round(w), Math.round(h));
+
+      outCanvas.toBlob(blob => {
+        if (!blob) return;
+        this.clearPhoto();
+        const file = new File([blob], 'cropped-dish.jpg', { type: 'image/jpeg' });
+        this.photoFile = file;
+        this.photoPreview = URL.createObjectURL(blob);
+        this.recipe.image_url = '';
+        this.cropModal = false;
+        this.showToast('Photo updated!');
+      }, 'image/jpeg', 0.92);
     },
 
     loadRecipe(r) {
@@ -943,7 +1017,7 @@ function mixer() {
 
 // ── helpers ────────────────────────────────────────────────────────────
 function emptyRecipe() { return { name: '', description: '', servings: null, yield: '', image_url: '', tags: [], categories: [], notes: [], source_url: '', ingredients: [] }; }
-function emptyCfg() { return { mealie_url: '', mealie_token: '', ai_key: '', ai_base: '', ai_model: '', ai_rpm: '', auth_user: '', auth_pass: '', api_key: '' }; }
+function emptyCfg() { return { mealie_url: '', mealie_token: '', ai_key: '', ai_base: '', ai_model: '', ai_rpm: '', ai_rules: '', auth_user: '', auth_pass: '', api_key: '' }; }
 function api(path, opts = {}) {
   return fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }, ...opts });
 }

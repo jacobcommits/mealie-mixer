@@ -1916,3 +1916,49 @@ small {
   opacity: 0.6;
   font-size: 0.9rem;
 }
+
+/* Image Cropper Modal & Controls (v0.21.0) */
+.cropper-box {
+  max-width: 620px;
+  width: 92vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+.cropper-viewport {
+  width: 100%;
+  max-height: 48vh;
+  background: #000;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin: 10px 0;
+  box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+}
+.crop-canvas {
+  max-width: 100%;
+  max-height: 46vh;
+  object-fit: contain;
+  border-radius: 4px;
+}
+.cropper-controls {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+.cropper-sliders {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+}
+.slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.slider-group input[type="range"] {
+  accent-color: var(--accent);
+}

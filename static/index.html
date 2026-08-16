@@ -8,8 +8,8 @@
   <link rel="icon" type="image/png" href="/icons/favicon.png" />
   <link rel="apple-touch-icon" href="/icons/icon-180.png" />
   <title>Mealie Mixer</title>
-  <link rel="stylesheet" href="/style.css?v=0.20.0" />
-  <script defer src="/app.js?v=0.20.0"></script>
+  <link rel="stylesheet" href="/style.css?v=0.21.0" />
+  <script defer src="/app.js?v=0.21.0"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -79,6 +79,10 @@
         <small class="warn" x-show="pinned('AI_RPM_LIMIT')">⚠ RPM Limit pinned by env var</small>
         <button class="btn ghost sm" @click="testAi()">Test AI (≈1 token)</button>
         <small :class="aiTest.ok ? 'ok' : 'err'" x-text="aiTest.msg"></small>
+
+        <h3>Personalized AI Rules &amp; Household Preferences</h3>
+        <textarea class="input" rows="3" placeholder="e.g. 'Always replace butter with olive oil. Default to Polish. Add Air Fryer tag if air-frying is mentioned.'" x-model="cfg.ai_rules"></textarea>
+        <small class="muted small">Persistent household rules automatically included in every recipe extraction call.</small>
 
         <h3>Login (Optional)</h3>
         <input class="input" type="text" placeholder="Username (leave blank for no login)" x-model="cfg.auth_user" />
@@ -243,14 +247,17 @@
             <h2>Source Image</h2>
             <p class="muted small">Original dish photo and source screenshots context.</p>
             <img class="hero" x-show="photoPreview || recipe.image_url" :src="photoPreview || recipe.image_url" alt="" style="max-height: 340px; object-fit: contain; background: #000;" />
-            <div class="photorow">
-              <label class="photopick">
+            <div class="photorow" style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <label class="photopick" style="flex: 1; min-width: 140px;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
                 <input type="file" accept="image/*" @change="pickPhoto($event)" />
-                <span x-text="(photoFile || recipe.image_url) ? 'Tap to change the recipe photo' : 'Add recipe photo (optional)'"></span>
+                <span x-text="(photoFile || recipe.image_url) ? 'Change photo' : 'Add photo'"></span>
               </label>
+              <button type="button" class="btn ghost sm" x-show="photoPreview || recipe.image_url" @click="openCrop(photoPreview || recipe.image_url)">
+                ✂ Crop / Rotate
+              </button>
               <button class="x" x-show="photoFile || recipe.image_url" @click="removePhoto()" title="remove photo" aria-label="Remove photo">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
               </button>
             </div>
             <small class="warn" x-show="autoPhotoWarn()">⚠ Thumbnail grabbed automatically from post — remove if it's not the dish.</small>
@@ -883,6 +890,52 @@
 
       <div class="row" style="margin-top: 14px; justify-content: flex-end;">
         <button class="btn ghost sm" @click="foodPickerModal = false">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Image Cropper & Refinement Modal (v0.21.0) -->
+  <div class="modal" x-show="cropModal" @click.self="cropModal = false" x-transition.opacity x-cloak>
+    <div class="modalbox cropper-box">
+      <div class="picker-hdr">
+        <h2>✂ Crop &amp; Rotate Photo</h2>
+        <button type="button" class="x" @click="cropModal = false">✕</button>
+      </div>
+      <p class="picker-desc">Rotate or trim margins to focus on the dish photo.</p>
+
+      <div class="cropper-viewport">
+        <canvas x-ref="cropCanvas" class="crop-canvas"></canvas>
+      </div>
+
+      <div class="cropper-controls">
+        <div class="row" style="gap: 8px; margin-bottom: 10px;">
+          <button type="button" class="btn ghost sm" @click="rotateCrop()">🔄 Rotate 90°</button>
+          <button type="button" class="btn ghost sm" @click="resetCrop()">↺ Reset</button>
+        </div>
+
+        <div class="cropper-sliders">
+          <div class="slider-group">
+            <span class="muted small">Top Trim: <strong x-text="cropMargins.top + '%'"></strong></span>
+            <input type="range" min="0" max="45" x-model.number="cropMargins.top" />
+          </div>
+          <div class="slider-group">
+            <span class="muted small">Bottom Trim: <strong x-text="cropMargins.bottom + '%'"></strong></span>
+            <input type="range" min="0" max="45" x-model.number="cropMargins.bottom" />
+          </div>
+          <div class="slider-group">
+            <span class="muted small">Left Trim: <strong x-text="cropMargins.left + '%'"></strong></span>
+            <input type="range" min="0" max="45" x-model.number="cropMargins.left" />
+          </div>
+          <div class="slider-group">
+            <span class="muted small">Right Trim: <strong x-text="cropMargins.right + '%'"></strong></span>
+            <input type="range" min="0" max="45" x-model.number="cropMargins.right" />
+          </div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top: 14px; justify-content: flex-end; gap: 8px;">
+        <button class="btn ghost sm" @click="cropModal = false">Cancel</button>
+        <button class="btn primary sm" @click="applyCrop()">Apply Crop</button>
       </div>
     </div>
   </div>

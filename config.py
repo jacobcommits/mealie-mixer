@@ -39,6 +39,7 @@ DEFAULTS = {
     "AI_MODEL": "gemini-3.1-flash-lite",
     "AI_API_KEY": "",
     "AI_RPM_LIMIT": "",           # cap on AI requests/min (bulk imports); "" or 0 = no limit
+    "AI_RULES": "",               # persistent household / dietary rules for prompt engine
     "WHISPER_MODEL": "base",      # faster-whisper model for voice notes (tiny/base/small/medium)
     "MEALIE_URL": "",
     "MEALIE_TOKEN": "",

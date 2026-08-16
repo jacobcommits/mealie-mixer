@@ -210,6 +210,7 @@ class ConfigBody(BaseModel):
     auth_pass: str = ""
     api_key: str = ""
     ai_rpm: str = ""
+    ai_rules: str = ""
 
 
 class UserCreateBody(BaseModel):
@@ -518,6 +519,7 @@ def api_get_config(request: Request):
             "ai_base_url": config.get("AI_BASE_URL"),
             "ai_model": config.get("AI_MODEL"),
             "ai_rpm": config.get("AI_RPM_LIMIT"),
+            "ai_rules": config.get("AI_RULES"),
             "auth_user": config.get("MIXER_AUTH_USER"),
             "has_mealie_token": bool(config.get("MEALIE_TOKEN")),
             "has_ai_key": bool(config.get("AI_API_KEY")),
@@ -534,7 +536,7 @@ def api_set_config(body: ConfigBody):
             mealie_url=body.mealie_url, mealie_token=body.mealie_token,
             ai_key=body.ai_key, ai_base=body.ai_base, ai_model=body.ai_model,
             auth_user=body.auth_user, auth_pass=body.auth_pass, api_key=body.api_key,
-            ai_rpm=body.ai_rpm,
+            ai_rpm=body.ai_rpm, ai_rules=body.ai_rules,
         )
     except core.ConfigError as e:
         raise HTTPException(status_code=400, detail=str(e))
