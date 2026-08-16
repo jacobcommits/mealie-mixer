@@ -25,6 +25,8 @@ import time
 from openai import OpenAI
 from PIL import Image
 
+import httpx
+
 import config
 
 # Backend is swappable via the config layer: AI_BASE_URL / AI_MODEL can point at
