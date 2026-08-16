@@ -9,7 +9,8 @@ function mixer() {
     categories: [],
     recipeNames: [],
     history: [],
-    users: [], newUser: { username: '', password: '' }, userMsg: '',   // admin user management (v0.15.0)
+    users: [], newUser: { username: '', password: '', display_name: '' }, userMsg: '',   // admin user management (v0.15.0)
+    myPassword: '', myPasswordMsg: '', myDisplayName: '', myDisplayNameMsg: '',   // self-service account management
     expandedId: null, payloads: {},   // history-row preview (lazy-loaded by id)
     // config / auth
     cfgInfo: {},
@@ -97,9 +98,38 @@ function mixer() {
       try { this.history = (await getJSON('/api/history')).items || []; } catch (_) {}
       this.error = ''; this.view = 'history';
     },
+    async openAccount() {
+      this.menuOpen = false; this.error = '';
+      this.myPassword = ''; this.myPasswordMsg = '';
+      this.myDisplayName = this.cfgInfo.display_name || ''; this.myDisplayNameMsg = '';
+      this.view = 'account';
+    },
+    async updateMyDisplayName() {
+      this.error = ''; this.myDisplayNameMsg = '';
+      try {
+        const r = await api('/api/users/me/display-name', { method: 'POST', body: JSON.stringify({ display_name: this.myDisplayName }) });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+        this.cfgInfo.display_name = j.display_name;
+        this.myDisplayNameMsg = 'Display name saved.';
+        this.showToast('Display name updated');
+      } catch (e) { this.error = String(e.message || e); }
+    },
+    async changeMyPassword() {
+      this.error = ''; this.myPasswordMsg = '';
+      if (!this.myPassword) { this.error = "Password can't be empty."; return; }
+      try {
+        const r = await api('/api/users/me/password', { method: 'POST', body: JSON.stringify({ password: this.myPassword }) });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
+        this.myPassword = '';
+        this.myPasswordMsg = 'Password changed successfully.';
+        this.showToast('Password updated');
+      } catch (e) { this.error = String(e.message || e); }
+    },
     async openUsers() {
       this.menuOpen = false; this.error = ''; this.userMsg = '';
-      this.newUser = { username: '', password: '' };
+      this.newUser = { username: '', password: '', display_name: '' };
       this.loadingMsg = 'Loading users…'; this.loading = true;
       try {
         this.users = (await getJSON('/api/users')).users || [];
@@ -112,10 +142,10 @@ function mixer() {
       const username = (this.newUser.username || '').trim();
       if (!username || !this.newUser.password) { this.error = 'Enter a username and a password.'; return; }
       try {
-        const r = await api('/api/users', { method: 'POST', body: JSON.stringify({ username, password: this.newUser.password, is_admin: false }) });
+        const r = await api('/api/users', { method: 'POST', body: JSON.stringify({ username, password: this.newUser.password, display_name: this.newUser.display_name || '', is_admin: false }) });
         const j = await r.json();
         if (!r.ok) throw new Error(j.detail || ('HTTP ' + r.status));
-        this.users = j.users || []; this.newUser = { username: '', password: '' };
+        this.users = j.users || []; this.newUser = { username: '', password: '', display_name: '' };
         this.userMsg = 'Added "' + username + '".';
       } catch (e) { this.error = String(e.message || e); }
     },

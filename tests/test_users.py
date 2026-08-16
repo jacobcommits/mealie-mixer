@@ -16,7 +16,7 @@ class TestCreateVerify:
         _isolated(monkeypatch, tmp_path)
         ok, _ = users.create_user("alice", "secret", is_admin=True)
         assert ok
-        assert users.verify("alice", "secret") == {"username": "alice", "is_admin": True}
+        assert users.verify("alice", "secret") == {"username": "alice", "display_name": "", "is_admin": True}
 
     def test_verify_wrong_password(self, monkeypatch, tmp_path):
         _isolated(monkeypatch, tmp_path)
@@ -114,7 +114,7 @@ class TestLegacyFallback:
         h = users.config.hash_password("oldpw")
         monkeypatch.setattr(users.config, "_file_cfg",
                             {"MIXER_AUTH_USER": "keeper", "MIXER_AUTH_PASS_HASH": h})
-        assert users.verify("keeper", "oldpw") == {"username": "keeper", "is_admin": True}
+        assert users.verify("keeper", "oldpw") == {"username": "keeper", "display_name": "", "is_admin": True}
         assert users.verify("keeper", "wrong") is None
 
     def test_fallback_only_when_store_empty(self, monkeypatch, tmp_path):
@@ -127,6 +127,20 @@ class TestLegacyFallback:
         assert users.verify("alice", "newpw") is not None
 
 
+class TestDisplayName:
+    def test_create_and_update_display_name(self, monkeypatch, tmp_path):
+        _isolated(monkeypatch, tmp_path)
+        ok, _ = users.create_user("alice", "secret", is_admin=True, display_name="Alice Smith")
+        assert ok
+        assert users.get("alice")["display_name"] == "Alice Smith"
+        rows = users.list_users()
+        assert rows[0]["display_name"] == "Alice Smith"
+
+        ok, _ = users.set_display_name("alice", "Mama Alice")
+        assert ok
+        assert users.get("alice")["display_name"] == "Mama Alice"
+
+
 class TestBootstrap:
     def test_seeds_from_legacy_hash(self, monkeypatch, tmp_path):
         _isolated(monkeypatch, tmp_path)
@@ -135,7 +149,7 @@ class TestBootstrap:
                             {"MIXER_AUTH_USER": "keeper", "MIXER_AUTH_PASS_HASH": h})
         users.ensure_bootstrap()
         # first user = the legacy one, as admin, password preserved
-        assert users.verify("keeper", "legacy-pw") == {"username": "keeper", "is_admin": True}
+        assert users.verify("keeper", "legacy-pw") == {"username": "keeper", "display_name": "", "is_admin": True}
         assert users.login_required() is True
 
     def test_seeds_from_legacy_plaintext(self, monkeypatch, tmp_path):

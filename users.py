@@ -31,11 +31,15 @@ def _conn() -> sqlite3.Connection:
         """CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+            display_name TEXT,
             pass_hash TEXT NOT NULL,
             is_admin INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL
         )"""
     )
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if "display_name" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
     return conn
 
 
@@ -75,17 +79,18 @@ def list_users() -> list[dict]:
     conn = _conn()
     try:
         rows = conn.execute(
-            "SELECT username, is_admin, created_at FROM users ORDER BY id"
+            "SELECT username, display_name, is_admin, created_at FROM users ORDER BY id"
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
 
 
-def create_user(username: str, password: str, is_admin: bool = False) -> tuple[bool, str]:
+def create_user(username: str, password: str, is_admin: bool = False, display_name: str = "") -> tuple[bool, str]:
     """Create a user. Returns (ok, message). Username ≥ 2 chars and unique
     (case-insensitive); password non-empty."""
     username = (username or "").strip()
+    display_name = (display_name or "").strip()
     if len(username) < 2:
         return False, "Username must be at least 2 characters."
     if not (password or "").strip():
@@ -96,8 +101,8 @@ def create_user(username: str, password: str, is_admin: bool = False) -> tuple[b
     try:
         with conn:  # commits
             conn.execute(
-                "INSERT INTO users (username, pass_hash, is_admin, created_at) VALUES (?, ?, ?, ?)",
-                (username, config.hash_password(password), 1 if is_admin else 0, _now()),
+                "INSERT INTO users (username, display_name, pass_hash, is_admin, created_at) VALUES (?, ?, ?, ?, ?)",
+                (username, display_name or None, config.hash_password(password), 1 if is_admin else 0, _now()),
             )
     finally:
         conn.close()
@@ -105,7 +110,7 @@ def create_user(username: str, password: str, is_admin: bool = False) -> tuple[b
 
 
 def verify(username: str, password: str) -> dict | None:
-    """Return {username, is_admin} on a match, else None. Constant-time via
+    """Return {username, display_name, is_admin} on a match, else None. Constant-time via
     config.verify_password (hmac.compare_digest under the hood).
 
     Legacy fallback: if the store is empty and a single MIXER_AUTH_USER is set in
@@ -115,14 +120,36 @@ def verify(username: str, password: str) -> dict | None:
     user = get(username)
     if user:
         if config.verify_password(password or "", user["pass_hash"]):
-            return {"username": user["username"], "is_admin": bool(user["is_admin"])}
+            return {
+                "username": user["username"],
+                "display_name": user.get("display_name") or "",
+                "is_admin": bool(user["is_admin"]),
+            }
         return None
     if count() == 0:
         legacy = (config.get("MIXER_AUTH_USER") or "").strip()
         legacy_hash = (config.get("MIXER_AUTH_PASS_HASH") or "").strip()
         if legacy and username == legacy and config.verify_password(password or "", legacy_hash):
-            return {"username": legacy, "is_admin": True}
+            return {"username": legacy, "display_name": "", "is_admin": True}
     return None
+
+
+def set_display_name(username: str, display_name: str) -> tuple[bool, str]:
+    """Update a user's display name."""
+    user = get(username)
+    if not user:
+        return False, f"No user named '{username}'."
+    clean_name = (display_name or "").strip()
+    conn = _conn()
+    try:
+        with conn:
+            conn.execute(
+                "UPDATE users SET display_name = ? WHERE username = ?",
+                (clean_name or None, username),
+            )
+    finally:
+        conn.close()
+    return True, f"Updated display name for '{username}'."
 
 
 def set_password(username: str, password: str) -> tuple[bool, str]:

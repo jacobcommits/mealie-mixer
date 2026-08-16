@@ -619,9 +619,10 @@
       <p class="muted small">Everyone you add can sign in and import recipes into the shared Mealie. Each person sees only their own import history.</p>
 
       <h3>Add a family member</h3>
-      <div class="row" style="gap: 8px; align-items: stretch;">
-        <input class="input" type="text" placeholder="Username" x-model="newUser.username" style="flex: 1;" />
-        <input class="input" type="password" placeholder="Password" x-model="newUser.password" style="flex: 1;" />
+      <div class="row" style="gap: 8px; align-items: stretch; flex-wrap: wrap;">
+        <input class="input" type="text" placeholder="Username (e.g. dad)" x-model="newUser.username" style="flex: 1; min-width: 130px;" />
+        <input class="input" type="text" placeholder="Display Name (Optional, e.g. Dad)" x-model="newUser.display_name" style="flex: 1; min-width: 130px;" />
+        <input class="input" type="password" placeholder="Password" x-model="newUser.password" style="flex: 1; min-width: 130px;" />
         <button class="btn primary" @click="addUser()">Add</button>
       </div>
       <small class="ok" x-show="userMsg" x-text="userMsg"></small>
@@ -630,7 +631,7 @@
       <template x-for="u in users" :key="u.username">
         <div class="cbrow" style="align-items: center; gap: 10px;">
           <div style="flex: 1;">
-            <strong x-text="u.username"></strong>
+            <strong x-text="u.display_name ? (u.display_name + ' (' + u.username + ')') : u.username"></strong>
             <span class="muted small" x-show="u.is_admin"> · admin</span>
             <span class="muted small" x-show="u.username === cfgInfo.user"> · you</span>
           </div>
@@ -639,6 +640,37 @@
           <button class="btn ghost sm" @click="deleteUser(u)" :disabled="users.length <= 1">Delete</button>
         </div>
       </template>
+      <p class="err" x-show="error" x-text="error"></p>
+
+      <div class="row" style="margin-top: 10px;">
+        <button class="btn ghost" @click="goHome()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          <span>Back</span>
+        </button>
+      </div>
+    </div>
+  </template>
+
+  <!-- my account -->
+  <template x-if="view === 'account'">
+    <div class="card fade-in">
+      <h2>My Account</h2>
+      <p class="muted small">Signed in as <strong x-text="cfgInfo.display_name ? (cfgInfo.display_name + ' (' + cfgInfo.user + ')') : cfgInfo.user"></strong><span x-show="cfgInfo.is_admin"> · admin</span>.</p>
+
+      <h3>Display Name</h3>
+      <p class="muted small">Personalize your name shown across the app.</p>
+      <div class="row" style="gap: 8px; align-items: stretch;">
+        <input class="input" type="text" placeholder="Display Name (e.g. Dad)" x-model="myDisplayName" style="flex: 1;" />
+        <button class="btn primary" @click="updateMyDisplayName()">Save</button>
+      </div>
+      <small class="ok" x-show="myDisplayNameMsg" x-text="myDisplayNameMsg"></small>
+
+      <h3>Change Password</h3>
+      <div class="row" style="gap: 8px; align-items: stretch;">
+        <input class="input" type="password" placeholder="New Password" x-model="myPassword" style="flex: 1;" />
+        <button class="btn primary" @click="changeMyPassword()">Change</button>
+      </div>
+      <small class="ok" x-show="myPasswordMsg" x-text="myPasswordMsg"></small>
       <p class="err" x-show="error" x-text="error"></p>
 
       <div class="row" style="margin-top: 10px;">
@@ -659,7 +691,12 @@
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
       </button>
     </div>
-    <p class="muted small" style="margin: 4px 18px 10px;" x-show="cfgInfo.user" x-cloak>Signed in as <strong x-text="cfgInfo.user"></strong><span x-show="cfgInfo.is_admin"> · admin</span></p>
+    <p class="muted small" style="margin: 4px 18px 10px;" x-show="cfgInfo.user" x-cloak>Signed in as <strong x-text="cfgInfo.display_name ? (cfgInfo.display_name + ' (' + cfgInfo.user + ')') : cfgInfo.user"></strong><span x-show="cfgInfo.is_admin"> · admin</span></p>
+
+    <button class="drawer-item" x-show="cfgInfo.login_required" @click="openAccount()">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+      <span>My Account</span>
+    </button>
 
     <button class="drawer-item" @click="openFix()">
       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>

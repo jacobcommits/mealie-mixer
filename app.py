@@ -36,9 +36,16 @@ def create_app():
     # Signed-cookie sessions for the web UI login. The secret is env/config-set
     # if MIXER_SESSION_SECRET is provided, otherwise generated ONCE and persisted
     # to the /data volume (core.session_secret) so restarts/rebuilds don't log
-    # everyone out.
+    # everyone out. Set max_age to 30 days (2,592,000 seconds) so family members stay
+    # signed in on mobile devices.
     secret = core.session_secret()
-    app.add_middleware(SessionMiddleware, secret_key=secret, same_site="lax", https_only=False)
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=secret,
+        same_site="lax",
+        https_only=False,
+        max_age=2592000,
+    )
 
     app.include_router(api_router)
 

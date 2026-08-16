@@ -214,11 +214,16 @@ class ConfigBody(BaseModel):
 class UserCreateBody(BaseModel):
     username: str
     password: str
+    display_name: str = ""
     is_admin: bool = False
 
 
 class UserPasswordBody(BaseModel):
     password: str
+
+
+class UserDisplayNameBody(BaseModel):
+    display_name: str = ""
 
 
 class UserAdminBody(BaseModel):
@@ -463,8 +468,15 @@ def api_login(request: Request, body: LoginBody):
         raise HTTPException(status_code=401, detail="Invalid username or password.")
     request.session["authed"] = True
     request.session["user"] = info["username"]
+    request.session["display_name"] = info.get("display_name") or ""
     request.session["is_admin"] = info["is_admin"]
-    return {"ok": True, "login_required": True, "is_admin": info["is_admin"]}
+    return {
+        "ok": True,
+        "login_required": True,
+        "is_admin": info["is_admin"],
+        "user": info["username"],
+        "display_name": info.get("display_name") or "",
+    }
 
 
 @router.post("/logout")
@@ -478,12 +490,16 @@ def api_get_config(request: Request):
     """Gate info for the UI. Open returns only {configured, login_required};
     settings fields (never secret *values*) are added once authed/open."""
     authed = bool(request.session.get("authed")) or not users.login_required()
+    user_name = request.session.get("user")
+    user_obj = users.get(user_name or "") if user_name else None
+    disp_name = request.session.get("display_name") or (user_obj.get("display_name") if user_obj else "") or ""
     out = {
         "configured": config.is_configured(),
         "login_required": users.login_required(),
         "authed": authed,
         "is_admin": bool(request.session.get("is_admin")),
-        "user": request.session.get("user"),
+        "user": user_name,
+        "display_name": disp_name,
         "voice": transcribe.is_available(),   # is the voice-note feature usable in this build?
     }
     if authed:
@@ -560,7 +576,7 @@ def api_create_first_admin(body: UserCreateBody):
     POST /api/users instead. require_ui passes in the open state."""
     if users.login_required():
         raise HTTPException(status_code=409, detail="Accounts already exist — sign in as an admin to add more.")
-    ok, msg = users.create_user(body.username, body.password, is_admin=True)
+    ok, msg = users.create_user(body.username, body.password, is_admin=True, display_name=body.display_name)
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
     return {"ok": True, "message": msg}
@@ -575,10 +591,35 @@ def api_users():
 @router.post("/users", dependencies=[Depends(require_admin)])
 def api_create_user(body: UserCreateBody):
     """Add a family-member account — admin only."""
-    ok, msg = users.create_user(body.username, body.password, is_admin=body.is_admin)
+    ok, msg = users.create_user(body.username, body.password, is_admin=body.is_admin, display_name=body.display_name)
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
     return {"ok": True, "message": msg, "users": users.list_users()}
+
+
+@router.post("/users/me/password", dependencies=[Depends(require_ui)])
+def api_change_my_password(request: Request, body: UserPasswordBody):
+    """Allow any authed logged-in family member to change their own password."""
+    user = request.session.get("user")
+    if not user:
+        raise HTTPException(status_code=401, detail="Log in required.")
+    ok, msg = users.set_password(user, body.password)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"ok": True, "message": msg}
+
+
+@router.post("/users/me/display-name", dependencies=[Depends(require_ui)])
+def api_change_my_display_name(request: Request, body: UserDisplayNameBody):
+    """Allow any authed logged-in family member to set/update their display name."""
+    user = request.session.get("user")
+    if not user:
+        raise HTTPException(status_code=401, detail="Log in required.")
+    ok, msg = users.set_display_name(user, body.display_name)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    request.session["display_name"] = (body.display_name or "").strip()
+    return {"ok": True, "message": msg, "display_name": (body.display_name or "").strip()}
 
 
 @router.post("/users/{username}/password", dependencies=[Depends(require_admin)])

@@ -92,3 +92,24 @@ def test_demoting_last_admin_refused(monkeypatch, tmp_path):
     c = _client()
     c.post("/api/login", json={"username": "keeper", "password": "pw"})
     assert c.post("/api/users/keeper/admin", json={"is_admin": False}).status_code == 400
+
+
+def test_self_service_account_updates(monkeypatch, tmp_path):
+    _isolate(monkeypatch, tmp_path)
+    users.create_user("bob", "bpw", is_admin=False, display_name="Bobby")
+    c = _client()
+    # log in as standard user bob
+    l = c.post("/api/login", json={"username": "bob", "password": "bpw"})
+    assert l.status_code == 200
+    assert l.json()["display_name"] == "Bobby"
+
+    # bob changes his display name
+    r1 = c.post("/api/users/me/display-name", json={"display_name": "Robert"})
+    assert r1.status_code == 200
+    assert r1.json()["display_name"] == "Robert"
+    assert c.get("/api/config").json()["display_name"] == "Robert"
+
+    # bob changes his own password
+    r2 = c.post("/api/users/me/password", json={"password": "newbpw"})
+    assert r2.status_code == 200
+    assert users.verify("bob", "newbpw") is not None
