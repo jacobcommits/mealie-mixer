@@ -16,6 +16,7 @@ Typed contract via Pydantic — gives auto /docs (interactive OpenAPI) for free.
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import os
 import tempfile
@@ -269,13 +270,16 @@ async def api_extract(
     # its 30s timeout) and this endpoint is async, so calling it directly would
     # freeze the whole event loop (every other request, health checks, job polls).
     try:
-        known_categories = await run_in_threadpool(fetch_category_names)
+        async with asyncio.timeout(1.5):
+            res_cats, res_tags = await asyncio.gather(
+                run_in_threadpool(fetch_category_names),
+                run_in_threadpool(fetch_tag_names),
+                return_exceptions=True,
+            )
+            known_categories = res_cats if isinstance(res_cats, list) else []
+            known_tags = res_tags if isinstance(res_tags, list) else []
     except Exception:
-        known_categories = []
-    try:
-        known_tags = await run_in_threadpool(fetch_tag_names)
-    except Exception:
-        known_tags = []
+        known_categories, known_tags = [], []
 
     tmp_paths: list[str] = []
     try:
