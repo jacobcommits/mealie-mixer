@@ -389,6 +389,7 @@ def extract_recipes_from_url(
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
+    known_tags=(),
     units_system: str = "metric",
 ) -> list[dict]:
     """Extract recipe(s) from a recipe-website URL.
@@ -400,7 +401,10 @@ def extract_recipes_from_url(
     Won't work on social posts (Instagram/TikTok) — screenshot those instead.
     """
     source_text, image_url = _scrape_url(url)
-    prompt = build_user_prompt(target_language, user_note, source="the recipe text below", known_categories=known_categories, units_system=units_system)
+    prompt = build_user_prompt(
+        target_language, user_note, source="the recipe text below",
+        known_categories=known_categories, known_tags=known_tags, units_system=units_system
+    )
     content = [{"type": "text", "text": f"{prompt}\n\n--- RECIPE SOURCE ---\n{source_text}"}]
     recipes = _structure(content)
     # carry the page's dish photo + source link through so push.py can attach them
@@ -579,6 +583,7 @@ def extract_recipes_from_sources(
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
+    known_tags=(),
     units_system: str = "metric",
     progress=None,
     log=None,
@@ -649,7 +654,8 @@ def extract_recipes_from_sources(
 
     prompt = build_user_prompt(
         target_language, user_note,
-        source="the provided sources", known_categories=known_categories, units_system=units_system,
+        source="the provided sources", known_categories=known_categories,
+        known_tags=known_tags, units_system=units_system,
     )
     text_payload = prompt + ("\n\n" + "\n\n".join(text_blocks) if text_blocks else "")
     content = [{"type": "text", "text": text_payload}]

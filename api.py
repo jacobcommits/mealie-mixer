@@ -273,6 +273,11 @@ async def api_extract(
     except Exception:
         known_categories = []
 
+    try:
+        known_tags = await run_in_threadpool(fetch_tag_names)
+    except Exception:
+        known_tags = []
+
     tmp_paths: list[str] = []
     try:
         image_paths, doc_texts, audio_path = await _collect_sources(files, audio, tmp_paths)
@@ -287,6 +292,7 @@ async def api_extract(
             audio_path=audio_path,
             user_note=prompt, target_language=language,
             known_categories=known_categories,
+            known_tags=known_tags,
             units_system=units_system,
         )
     except ValueError as e:            # nothing provided / no speech in the audio
@@ -728,9 +734,14 @@ def api_restandardize(body: RestandardizeBody):
         known_categories = []
 
     try:
+        known_tags = fetch_tag_names()
+    except Exception:
+        known_tags = []
+
+    try:
         recipes = extract_recipes_from_text(
             text, target_language=body.language, known_categories=known_categories,
-            units_system=body.units_system,
+            known_tags=known_tags, units_system=body.units_system,
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AI structuring failed: {str(e)[:300]}")

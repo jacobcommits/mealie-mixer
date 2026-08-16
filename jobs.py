@@ -55,7 +55,13 @@ def _load(job_id: str, kind: str = "cookbook") -> dict | None:
 
 def _structure_default(text: str, language: str, units_system: str):
     from extract import extract_recipes_from_text
-    return extract_recipes_from_text(text, target_language=language, units_system=units_system)
+    import push
+    categories = push.fetch_category_names()
+    tags = push.fetch_tag_names()
+    return extract_recipes_from_text(
+        text, target_language=language, units_system=units_system,
+        known_categories=categories, known_tags=tags,
+    )
 
 
 def _process_job(job: dict, chunks: list[dict], language: str, units_system: str, structure_fn=None) -> dict:
