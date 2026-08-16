@@ -462,20 +462,8 @@
             <small class="warn" x-show="updateMode">⚠ Saving changes will overwrite the existing recipe directly in Mealie.</small>
             <p class="err" x-show="error" x-text="error"></p>
 
-            <div class="row" style="margin-top: 14px;">
-              <button class="btn primary" :disabled="loading" @click="push()" x-text="updateMode ? 'Save Changes' : (queue.length ? ('Save & Next (' + queue.length + ' left)') : 'Save to Mealie')"></button>
-              <button class="btn ghost" x-show="hasSources() && !updateMode" @click="reExtract()">Tweak Prompt</button>
-              <button class="btn ghost" @click="discard()" x-text="queue.length ? 'Skip recipe' : 'Discard'"></button>
-            </div>
           </div>
         </div>
-
-        <!-- Sticky Mobile Action Bar -->
-        <div class="actionbar" x-show="view === 'review'">
-          <button class="btn ghost sm" @click="discard()" x-text="queue.length ? 'Skip' : 'Discard'"></button>
-          <button class="btn primary" :disabled="loading" @click="push()" x-text="updateMode ? 'Save Changes' : (queue.length ? ('Save & Next (' + queue.length + ')') : 'Save to Mealie')"></button>
-        </div>
-
       </div>
     </template>
 
