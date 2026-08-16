@@ -45,6 +45,7 @@ from push import (
     fetch_recipe,
     fetch_recipe_names,
     fetch_recipes,
+    fetch_tag_names,
     push_recipe,
     recipe_to_text,
     test_mealie,
@@ -270,6 +271,10 @@ async def api_extract(
         known_categories = await run_in_threadpool(fetch_category_names)
     except Exception:
         known_categories = []
+    try:
+        known_tags = await run_in_threadpool(fetch_tag_names)
+    except Exception:
+        known_tags = []
 
     tmp_paths: list[str] = []
     try:
@@ -285,6 +290,7 @@ async def api_extract(
             audio_path=audio_path,
             user_note=prompt, target_language=language,
             known_categories=known_categories,
+            known_tags=known_tags,
             units_system=units_system,
         )
     except ValueError as e:            # nothing provided / no speech in the audio
@@ -389,6 +395,10 @@ async def api_extract_job(
         known_categories = await run_in_threadpool(fetch_category_names)
     except Exception:
         known_categories = []
+    try:
+        known_tags = await run_in_threadpool(fetch_tag_names)
+    except Exception:
+        known_tags = []
     tmp_paths: list[str] = []
     image_paths, doc_texts, audio_path = await _collect_sources(files, audio, tmp_paths)
     sources = {
@@ -401,7 +411,7 @@ async def api_extract_job(
     }
     job_id = jobs.start_extract_job(
         sources, language=language, user_note=prompt, known_categories=known_categories,
-        units_system=units_system, user=_effective_user(request),
+        known_tags=known_tags, units_system=units_system, user=_effective_user(request),
     )
     return {"job_id": job_id}
 
@@ -666,6 +676,12 @@ def api_categories():
     return {"categories": fetch_category_names()}
 
 
+@router.get("/tags", dependencies=[Depends(require_access)])
+def api_tags():
+    """Tag names for the review-step autocomplete (session or key auth)."""
+    return {"tags": fetch_tag_names()}
+
+
 @router.get("/recipe-names", dependencies=[Depends(require_access)])
 def api_recipe_names():
     """Existing recipe names for the review-step duplicate warning."""
@@ -709,11 +725,15 @@ def api_restandardize(body: RestandardizeBody):
         known_categories = fetch_category_names()
     except Exception:
         known_categories = []
+    try:
+        known_tags = fetch_tag_names()
+    except Exception:
+        known_tags = []
 
     try:
         recipes = extract_recipes_from_text(
             text, target_language=body.language, known_categories=known_categories,
-            units_system=body.units_system,
+            known_tags=known_tags, units_system=body.units_system,
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AI structuring failed: {str(e)[:300]}")

@@ -7,6 +7,7 @@ function mixer() {
     languages: ['English', 'Polish', 'German', 'French', 'Spanish', 'Italian', 'Ukrainian'],
     foods: [],
     categories: [],
+    tags: [],
     recipeNames: [],
     history: [],
     users: [], newUser: { username: '', password: '', display_name: '' }, userMsg: '',   // admin user management (v0.15.0)
@@ -25,7 +26,7 @@ function mixer() {
     recording: false, audioBlob: null, audioUrl: '', recElapsed: 0, audioProgress: 0, jobActive: false,   // voice note (B3) + tab-close resume
     // review
     recipe: emptyRecipe(), instructionsText: '', queue: [],
-    photoFile: null, photoPreview: '', categoryInput: '',
+    photoFile: null, photoPreview: '', categoryInput: '', tagInput: '',
     sourceImages: [], zoomSrc: '',
     dupModal: false, _dupOk: false,
     // cookbook (B7, dev)
@@ -51,6 +52,7 @@ function mixer() {
     async afterAuth() {
       try { this.foods = (await getJSON('/api/foods')).foods || []; } catch (_) { this.foods = []; }
       try { this.categories = (await getJSON('/api/categories')).categories || []; } catch (_) { this.categories = []; }
+      try { this.tags = (await getJSON('/api/tags')).tags || []; } catch (_) { this.tags = []; }
       try { this.recipeNames = (await getJSON('/api/recipe-names')).names || []; } catch (_) { this.recipeNames = []; }
       try { this.history = (await getJSON('/api/history')).items || []; } catch (_) { this.history = []; }
       this.error = ''; this.view = 'input';
@@ -478,6 +480,7 @@ function mixer() {
       };
       this.instructionsText = (r.instructions || []).join('\n');
       this.categoryInput = '';
+      this.tagInput = '';
       this.saveSession();
     },
     addIngredient() { this.recipe.ingredients.push({ quantity: '', unit: '', food: '', note: '', title: '' }); },
@@ -497,6 +500,12 @@ function mixer() {
       if (v && !this.recipe.categories.some(c => c.toLowerCase() === v.toLowerCase())) this.recipe.categories.push(v);
     },
     removeCategory(i) { this.recipe.categories.splice(i, 1); },
+    addTag(name) {
+      const v = (name == null ? this.tagInput : name).trim();
+      this.tagInput = '';
+      if (v && !(this.recipe.tags ||= []).some(t => t.toLowerCase() === v.toLowerCase())) this.recipe.tags.push(v);
+    },
+    removeTag(i) { (this.recipe.tags ||= []).splice(i, 1); },
     nameExists() {
       const n = (this.recipe.name || '').trim().toLowerCase();
       return !!n && this.recipeNames.some(x => x.toLowerCase() === n);
@@ -526,6 +535,11 @@ function mixer() {
       const query = (q || '').trim().toLowerCase();
       if (!query) return [];
       return this.categories.filter(c => c.toLowerCase().includes(query)).slice(0, 8);
+    },
+    filteredTags(q) {
+      const query = (q || '').trim().toLowerCase();
+      if (!query) return [];
+      return this.tags.filter(t => t.toLowerCase().includes(query)).slice(0, 8);
     },
     alreadyImported() {
       // non-blocking dedupe: does the entered URL match something already imported?

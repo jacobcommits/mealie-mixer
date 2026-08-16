@@ -159,7 +159,7 @@ def list_jobs(limit: int = 10, user: str | None = None) -> list[dict]:
 # the browser polls get_job(), rather than blocking the /api/extract request. `sources` is
 # a dict {image_paths, url, text, doc_texts, audio_path, _tmp_paths}.
 
-def _extract_sources_default(sources, user_note, language, known_categories, units_system, progress):
+def _extract_sources_default(sources, user_note, language, known_categories, units_system, progress, known_tags=()):
     from extract import extract_recipes_from_sources
     return extract_recipes_from_sources(
         image_paths=sources.get("image_paths", []),
@@ -168,16 +168,16 @@ def _extract_sources_default(sources, user_note, language, known_categories, uni
         doc_texts=sources.get("doc_texts", []),
         audio_path=sources.get("audio_path", ""),
         user_note=user_note, target_language=language,
-        known_categories=known_categories, units_system=units_system,
+        known_categories=known_categories, known_tags=known_tags, units_system=units_system,
         progress=progress,
     )
 
 
 def _process_extract_job(job, sources, language, user_note, known_categories, units_system,
-                         extract_fn=None) -> dict:
+                         known_tags=(), extract_fn=None) -> dict:
     """Combine the given sources into recipe(s). Mutates `job` in place (status/phase/progress)
     and always removes the temp upload files in `sources['_tmp_paths']`. `extract_fn(sources,
-    note, lang, cats, progress)` is injectable for tests."""
+    note, lang, cats, progress, tags)` is injectable for tests."""
     extract_fn = extract_fn or _extract_sources_default
 
     def on_progress(frac):
@@ -187,7 +187,10 @@ def _process_extract_job(job, sources, language, user_note, known_categories, un
                 job["phase"] = "transcribing" if frac < 0.999 else "structuring"
 
     try:
-        recs = extract_fn(sources, user_note, language, known_categories, units_system, on_progress) or []
+        try:
+            recs = extract_fn(sources, user_note, language, known_categories, units_system, on_progress, known_tags) or []
+        except TypeError:
+            recs = extract_fn(sources, user_note, language, known_categories, units_system, on_progress) or []
         with _LOCK:
             for rec in recs:
                 job["recipes"].append({"recipe": rec, "image": rec.get("image_url")})
@@ -211,7 +214,7 @@ def _process_extract_job(job, sources, language, user_note, known_categories, un
 
 
 def start_extract_job(sources: dict, language: str = "English", user_note: str = "",
-                     known_categories=(), units_system: str = "metric",
+                     known_categories=(), known_tags=(), units_system: str = "metric",
                      user: str | None = None) -> str:
     """Kick off a combine extraction in a daemon thread; returns the id the browser polls.
     `user` is recorded as the owner so the status poll can scope to the starter."""
@@ -232,7 +235,7 @@ def start_extract_job(sources: dict, language: str = "English", user_note: str =
     _flush(job)
     threading.Thread(
         target=_process_extract_job,
-        args=(job, sources, language, user_note, list(known_categories), units_system),
+        args=(job, sources, language, user_note, list(known_categories), units_system, list(known_tags)),
         daemon=True,
     ).start()
     return job_id

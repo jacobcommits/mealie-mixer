@@ -8,8 +8,8 @@
   <link rel="icon" type="image/png" href="/icons/favicon.png" />
   <link rel="apple-touch-icon" href="/icons/icon-180.png" />
   <title>Mealie Mixer</title>
-  <link rel="stylesheet" href="/style.css?v=0.18.2" />
-  <script defer src="/app.js?v=0.18.2"></script>
+  <link rel="stylesheet" href="/style.css?v=0.19.0" />
+  <script defer src="/app.js?v=0.19.0"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -312,6 +312,36 @@
                        :class="{ 'active': activeIndex === idx }"
                        @click="categoryInput = c; addCategory(); open = false;"
                        x-text="c"></div>
+                </template>
+              </div>
+            </div>
+
+            <h3>Tags</h3>
+            <div class="chips">
+              <template x-for="(t, i) in recipe.tags" :key="i">
+                <span class="chip">
+                  <span x-text="t"></span>
+                  <button class="cx" @click="removeTag(i)" title="remove" aria-label="Remove tag">✕</button>
+                </span>
+              </template>
+            </div>
+            
+            <!-- Tag Autocomplete Custom Combobox -->
+            <div class="combobox-wrapper" x-data="{ open: false, activeIndex: -1 }" @click.away="open = false">
+              <input class="input" type="text" placeholder="Type tag to add (e.g. Quick, Air Fryer)…"
+                     x-model="tagInput"
+                     @focus="open = true; activeIndex = -1"
+                     @keydown.escape="open = false"
+                     @keydown.arrow-down.prevent="open = true; activeIndex = Math.min(activeIndex + 1, filteredTags(tagInput).length - 1)"
+                     @keydown.arrow-up.prevent="activeIndex = Math.max(activeIndex - 1, -1)"
+                     @keydown.enter.prevent="if (activeIndex >= 0) { tagInput = filteredTags(tagInput)[activeIndex]; } addTag(); open = false;" />
+              
+              <div class="combobox-options" x-show="open && filteredTags(tagInput).length" x-cloak>
+                <template x-for="(t, idx) in filteredTags(tagInput)" :key="t">
+                  <div class="combobox-option"
+                       :class="{ 'active': activeIndex === idx }"
+                       @click="tagInput = t; addTag(); open = false;"
+                       x-text="t"></div>
                 </template>
               </div>
             </div>
