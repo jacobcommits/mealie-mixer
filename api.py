@@ -416,6 +416,13 @@ def api_extract_job_status(request: Request, job_id: str):
     return job
 
 
+@router.delete("/extract/job/{job_id}", dependencies=[Depends(require_access)])
+def api_delete_extract_job(request: Request, job_id: str):
+    """Cancel / delete a background extraction job."""
+    jobs.delete_job(job_id, user=_effective_user(request))
+    return {"status": "cancelled"}
+
+
 @router.post(
     "/push",
     response_model=PushResponse,

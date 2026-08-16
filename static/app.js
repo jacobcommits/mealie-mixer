@@ -36,11 +36,13 @@ function mixer() {
     mealieRecipes: [], fixSearch: '', updateMode: null,  // null = create, 'slug' = update that slug
     // ui
     loading: false, loadingMsg: '', error: '', toast: '', menuOpen: false,
+    verboseMode: true, extractLogs: [], _extractJob: null, jobActive: false,
 
     // ── gate / auth ─────────────────────────────────────────────────────
     async init() {
       try { this.language = localStorage.getItem('mm-lang') || this.language; } catch (_) {}
       try { this.unitsSystem = localStorage.getItem('mm-units') || this.unitsSystem; } catch (_) {}
+      try { this.verboseMode = localStorage.getItem('mm-verbose') !== '0'; } catch (_) {}
       try { this.cfgInfo = await getJSON('/api/config'); }
       catch (_) { this.error = 'Could not reach the server.'; }
       if (!this.cfgInfo.configured) { this.prefillCfg(); this.view = 'setup'; return; }
@@ -264,34 +266,11 @@ function mixer() {
 
     // ── recipe flow ─────────────────────────────────────────────────────
     async extract() {
-      this.error = '';
-      // Any audio/video → background job (whisper is slow). Everything else combines
-      // synchronously (the backend merges all provided sources into one recipe).
-      if (this.audioBlob) { return this.extractJob(); }
-      this.loadingMsg = 'Reading your recipe…'; this.loading = true;
-      try { localStorage.setItem('mm-lang', this.language); localStorage.setItem('mm-units', this.unitsSystem); } catch (_) {}   // remember for next time / share flow
-      this.clearSourceImages();
-      if (this.fileList && this.fileList.length) this.sourceImages = [...this.fileList].filter(f => (f.type || '').startsWith('image/')).map(f => URL.createObjectURL(f));
-      try {
-        const fd = new FormData();
-        if (this.fileList && this.fileList.length) { for (const f of this.fileList) fd.append('files', f); }
-        if (this.url.trim()) { fd.append('url', this.url.trim()); }
-        if (this.pastedText.trim()) { fd.append('text', this.pastedText.trim()); }
-        fd.append('language', this.language); fd.append('prompt', this.prompt || ''); fd.append('units_system', this.unitsSystem);
-        const r = await fetch('/api/extract', { method: 'POST', body: fd, credentials: 'same-origin' });
-        if (!r.ok) throw new Error(await detail(r));
-        const recipes = (await r.json()).recipes || [];
-        if (!recipes.length) throw new Error('No recipe found — try a clearer shot or a different link.');
-        this.queue = recipes.slice(1); this.updateMode = null; this.loadRecipe(recipes[0]); this.view = 'review';
-      } catch (e) { this.error = String(e.message || e); }
-      finally { this.loading = false; }
+      return this.extractJob();
     },
-    // Combine flow: when a voice note / screen-recording is in the mix, transcription (and
-    // any link fetch) runs server-side as a job we poll, so the slow first run doesn't hang
-    // the request. Sends every source the user added — they get merged into one recipe.
     async extractJob() {
-      this.error = ''; this.audioProgress = 0;
-      this.loadingMsg = 'Working…'; this.loading = true;
+      this.error = ''; this.audioProgress = 0; this.extractLogs = ['[00:00:00] 🚀 Initializing extraction job...'];
+      this.loadingMsg = 'Reading your recipe…'; this.loading = true;
       try { localStorage.setItem('mm-lang', this.language); localStorage.setItem('mm-units', this.unitsSystem); } catch (_) {}
       this.clearSourceImages();
       if (this.fileList && this.fileList.length) this.sourceImages = [...this.fileList].filter(f => (f.type || '').startsWith('image/')).map(f => URL.createObjectURL(f));
@@ -306,7 +285,7 @@ function mixer() {
         if (!r.ok) throw new Error(await detail(r));
         this._extractJob = (await r.json()).job_id;
         this.jobActive = true;
-        try { localStorage.setItem('mm-extract-job', this._extractJob); } catch (_) {}   // tab-close resume
+        try { localStorage.setItem('mm-extract-job', this._extractJob); } catch (_) {}
         this.jobPoll();
       } catch (e) { this.error = String(e.message || e); this.loading = false; }
     },
@@ -316,11 +295,17 @@ function mixer() {
       try { job = await getJSON('/api/extract/job/' + jid); }
       catch (e) { this.error = String(e.message || e); this.loading = false; this._clearExtractJob(); return; }
       this.audioProgress = job.progress || 0;
+      this.extractLogs = job.logs || [];
       this.loadingMsg = ({
         'fetching link': 'Fetching the link…',
         'transcribing': 'Transcribing… ' + Math.round((job.progress || 0) * 100) + '%',
         'structuring': 'Structuring the recipe…',
       })[job.phase] || 'Working…';
+      if (this.$refs.logTerminal) {
+        this.$nextTick(() => {
+          try { this.$refs.logTerminal.scrollTop = this.$refs.logTerminal.scrollHeight; } catch (_) {}
+        });
+      }
       if (job.status === 'done') {
         this.loading = false; this.audioProgress = 0; this._clearExtractJob();
         const recipes = (job.recipes || []).map(x => x.recipe);
@@ -332,9 +317,22 @@ function mixer() {
         this.loading = false; this.audioProgress = 0; this._clearExtractJob();
         this.error = job.error || 'Extraction failed.'; return;
       }
-      this._extractTimer = setTimeout(() => this.jobPoll(), 1500);
+      this._extractTimer = setTimeout(() => this.jobPoll(), 500);
     },
     _clearExtractJob() { this._extractJob = null; this.jobActive = false; try { localStorage.removeItem('mm-extract-job'); } catch (_) {} },
+    cancelExtractJob() {
+      const jid = this._extractJob;
+      try { clearTimeout(this._extractTimer); } catch (_) {}
+      if (jid) {
+        api('/api/extract/job/' + jid, { method: 'DELETE' }).catch(() => {});
+      }
+      this._clearExtractJob();
+      this.loading = false; this.audioProgress = 0; this.loadingMsg = '';
+      this.view = 'input'; this.showToast('Extraction cancelled');
+    },
+    cancelExtract() {
+      this.cancelExtractJob();
+    },
     // Tab-close resume: a voice-note / combine extract runs as a server job persisted to /data,
     // so if the tab is closed and reopened we re-attach to it and pick the progress back up
     // (mirrors the cookbook job resume). jobPoll handles every outcome (progress / review / error).

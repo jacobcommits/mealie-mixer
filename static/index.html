@@ -95,6 +95,13 @@
             <h3>Voice Transcription</h3>
             <small class="ok" x-show="cfgInfo.voice">🎤 Transcription enabled in this build — record or upload audio notes directly.</small>
             <small class="muted small" x-show="!cfgInfo.voice">Not included in this build (requires Whisper model files). Build with <span class="mono">WITH_VOICE=1</span> to enable voice features.</small>
+
+            <h3>Developer & Debug</h3>
+            <label class="checkfield" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-top: 6px;">
+              <input type="checkbox" x-model="verboseMode" @change="try { localStorage.setItem('mm-verbose', verboseMode ? '1' : '0'); } catch(_){}" />
+              <span style="font-weight: 500;">⚡ Show Live Execution Terminal during extraction</span>
+            </label>
+            <small class="muted small">Displays real-time logs (scraper actions, AI prompts, response sizes, micro-timing) inside the overlay window.</small>
           </div>
         </template>
 
@@ -770,11 +777,24 @@
 
   <div class="overlay" x-show="loading" x-transition.opacity x-cloak>
     <div class="spinner big"></div>
-    <p x-text="loadingMsg"></p>
+    <p x-text="loadingMsg" style="font-weight:600; margin-top: 0.5rem;"></p>
     <div class="cbbar" x-show="audioProgress > 0" x-cloak style="max-width:240px">
       <div class="cbbar-fill" :style="'width:' + Math.round(audioProgress * 100) + '%'"></div>
     </div>
-    <button class="btn ghost sm" x-show="jobActive" x-cloak @click="cancelExtractJob()" style="margin-top:1rem">Cancel</button>
+
+    <!-- Real-time Live Log Console (shown when verboseMode is ON) -->
+    <div class="extract-log-box" x-show="verboseMode && extractLogs && extractLogs.length" x-cloak>
+      <div class="extract-log-header">
+        <span>⚡ Live Execution Log</span>
+      </div>
+      <div class="extract-log-terminal" x-ref="logTerminal">
+        <template x-for="(log, idx) in extractLogs" :key="idx">
+          <div class="log-line" x-text="log" :class="log.includes('❌') ? 'log-err' : (log.includes('✨') || log.includes('✅') ? 'log-success' : '')"></div>
+        </template>
+      </div>
+    </div>
+
+    <button class="btn ghost sm" x-show="loading" x-cloak @click="cancelExtract()" style="margin-top:1rem">Cancel</button>
   </div>
   
   <div class="toast" x-show="toast" x-text="toast" x-transition></div>

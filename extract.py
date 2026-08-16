@@ -180,7 +180,7 @@ def _call_with_retry(make_call):
     raise RuntimeError("AI call failed after retries")  # defensive — unreachable
 
 
-def _structure(content: list) -> list[dict]:
+def _structure(content: list, log=None) -> list[dict]:
     """Send a user-content payload (text prompt + images, or just text) to the
     LLM and return normalised structured recipes. Shared by every input path —
     same single call, same JSON shape out, regardless of input."""
@@ -188,12 +188,18 @@ def _structure(content: list) -> list[dict]:
     if not api_key:
         raise RuntimeError("AI_API_KEY is not set — configure it in the setup page or .env.")
 
-    client = OpenAI(base_url=config.get("AI_BASE_URL"), api_key=api_key)
+    base_url = config.get("AI_BASE_URL")
+    model = config.get("AI_MODEL")
+    if log:
+        try: log(f"🤖 Connecting to AI Provider ({model} @ {base_url[:35]}...)")
+        except Exception: pass
+
+    client = OpenAI(base_url=base_url, api_key=api_key)
     _rpm_wait()   # honour the configured AI requests/min cap (bulk imports)
 
     def make_call(use_json: bool):
         kwargs = {
-            "model": config.get("AI_MODEL"),
+            "model": model,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": content},
@@ -207,9 +213,26 @@ def _structure(content: list) -> list[dict]:
             kwargs["response_format"] = {"type": "json_object"}
         return client.chat.completions.create(**kwargs)
 
-    resp = _call_with_retry(make_call)
-    raw = resp.choices[0].message.content or ""
-    return _normalize(parse_recipes(raw))
+    if log:
+        try: log("⏳ Waiting for AI completion...")
+        except Exception: pass
+
+    try:
+        resp = _call_with_retry(make_call)
+        raw = resp.choices[0].message.content or ""
+        if log:
+            try: log(f"📥 Received AI response ({len(raw)} chars). Structuring...")
+            except Exception: pass
+        recipes = _normalize(parse_recipes(raw))
+        if log:
+            try: log(f"✨ Successfully structured {len(recipes)} recipe(s)!")
+            except Exception: pass
+        return recipes
+    except Exception as e:
+        if log:
+            try: log(f"❌ AI Error ({type(e).__name__}): {str(e)[:250]}")
+            except Exception: pass
+        raise
 
 
 def extract_recipes(
@@ -529,24 +552,31 @@ def extract_recipes_from_video(
 
 
 def extract_recipes_from_sources(
-    image_paths: list[str] | None = None,
+    image_paths: list[str] = (),
     url: str = "",
     text: str = "",
-    doc_texts: list[str] | None = None,
+    doc_texts: list[str] = (),
     audio_path: str = "",
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
     units_system: str = "metric",
     progress=None,
+    log=None,
 ) -> list[dict]:
-    """Unified combine extractor: takes ANY combination of inputs (images, a URL,
-    pasted text, uploaded documents, and a voice note), builds a single multimodal
-    prompt where the text parts are clearly labelled blocks, and runs ONE extraction.
-    Used by /api/extract (sync) and /api/extract/job (async)."""
-    url = (url or "").strip()
-    image_paths = list(image_paths or [])
-    doc_texts = [t for t in (doc_texts or []) if t and t.strip()]
+    """Combine any mix of sources (photos, link, pasted text, PDFs, voice note)
+    into structured recipe(s). Single unified pipeline used by B3 combine jobs."""
+    def _log(msg):
+        if log:
+            try: log(msg)
+            except Exception: pass
+
+    _log("🚀 Starting recipe extraction...")
+    if progress:
+        try:
+            progress(0.1)
+        except Exception:
+            pass
 
     text_blocks: list[str] = []
     page_image_url = ""
@@ -554,39 +584,44 @@ def extract_recipes_from_sources(
     if url:
         if is_video_url(url):
             try:
+                _log(f"🎬 Reading social video post: {url}")
                 meta = _video_metadata(url)
-                cap = "\n\n".join(p for p in [
-                    f"Title: {meta['title']}" if meta.get("title") else "",
-                    f"Caption:\n{meta['description']}" if meta.get("description") else "",
-                ] if p)
+                cap = (meta.get("description") or meta.get("title") or "").strip()
                 if cap.strip():
                     text_blocks.append(f"--- LINKED POST CAPTION ---\n{cap}")
                 page_image_url = meta.get("thumbnail") or ""
-            except Exception:
-                pass
+                _log("✅ Read video metadata & thumbnail.")
+            except Exception as e:
+                _log(f"⚠️ Video metadata warning: {str(e)[:150]}")
         else:
             try:
+                _log(f"🌐 Scraping web page: {url}")
                 source_text, page_image_url = _scrape_url(url)
                 if source_text.strip():
                     text_blocks.append(f"--- LINKED PAGE ---\n{source_text}")
-            except Exception:
-                pass
+                    _log(f"✅ Scraped recipe text ({len(source_text)} chars).")
+            except Exception as e:
+                _log(f"❌ URL Scrape error: {str(e)[:200]}")
+                raise
 
     if text and text.strip():
         text_blocks.append(f"--- PASTED TEXT ---\n{text.strip()}")
+        _log(f"📝 Added pasted text ({len(text)} chars).")
 
     for dt in doc_texts:
-        text_blocks.append(f"--- DOCUMENT ---\n{dt.strip()}")
+        if dt.strip():
+            text_blocks.append(f"--- ATTACHED DOCUMENT ---\n{dt.strip()}")
+            _log("📄 Added attached document text.")
 
     if audio_path:
         import transcribe
-        transcript = transcribe.transcribe_audio(audio_path, progress=progress)
-        if transcript.strip():
-            text_blocks.append(f"--- SPOKEN (transcribed from audio/video) ---\n{transcript.strip()}")
-        elif not text_blocks and not image_paths:
-            raise ValueError(
-                "Couldn't make out any speech in that audio — try again, a bit closer to the mic."
+        _log("🎙 Transcribing audio dictation...")
+        transcript = transcribe.transcribe_audio(audio_path)
+        if transcript and transcript.strip():
+            text_blocks.append(
+                f"--- SPOKEN (transcribed from audio/video) ---\n{transcript.strip()}"
             )
+            _log("✅ Audio transcribed successfully.")
 
     if not text_blocks and not image_paths:
         raise ValueError(
@@ -599,10 +634,22 @@ def extract_recipes_from_sources(
     )
     text_payload = prompt + ("\n\n" + "\n\n".join(text_blocks) if text_blocks else "")
     content = [{"type": "text", "text": text_payload}]
+
+    import os
     for p in image_paths:
         content.append({"type": "image_url", "image_url": {"url": image_to_data_url(p)}})
+        _log(f"🖼 Attached photo payload ({os.path.basename(p)})")
 
-    recipes = _structure(content)
+    if progress:
+        try:
+            progress(0.4)
+        except Exception:
+            pass
+
+    try:
+        recipes = _structure(content, log=_log)
+    except TypeError:
+        recipes = _structure(content)
     for r in recipes:
         if page_image_url:
             r.setdefault("image_url", page_image_url)

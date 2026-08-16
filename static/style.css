@@ -1741,3 +1741,51 @@ small {
   }
 }
 
+/* Real-Time Live Execution Log Terminal Console */
+.extract-log-box {
+  width: 100%;
+  max-width: 480px;
+  margin-top: 14px;
+  background: #090a0f;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  text-align: left;
+}
+.extract-log-header {
+  background: rgba(255, 255, 255, 0.04);
+  padding: 6px 12px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--muted);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.extract-log-terminal {
+  padding: 10px 12px;
+  max-height: 140px;
+  overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #d1d5db;
+}
+.log-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  opacity: 0.9;
+}
+.log-err {
+  color: #f87171;
+  font-weight: 600;
+}
+.log-success {
+  color: #4ade80;
+  font-weight: 600;
+}
+
