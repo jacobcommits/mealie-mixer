@@ -390,10 +390,6 @@ async def api_extract_job(
         known_categories = await run_in_threadpool(fetch_category_names)
     except Exception:
         known_categories = []
-    try:
-        known_tags = await run_in_threadpool(fetch_tag_names)
-    except Exception:
-        known_tags = []
     tmp_paths: list[str] = []
     image_paths, doc_texts, audio_path = await _collect_sources(files, audio, tmp_paths)
     sources = {
@@ -406,7 +402,7 @@ async def api_extract_job(
     }
     job_id = jobs.start_extract_job(
         sources, language=language, user_note=prompt, known_categories=known_categories,
-        known_tags=known_tags, units_system=units_system, user=_effective_user(request),
+        units_system=units_system, user=_effective_user(request),
     )
     return {"job_id": job_id}
 
