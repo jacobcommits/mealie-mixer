@@ -120,6 +120,22 @@ def fetch_category_names() -> list[str]:
         return sorted({it["name"] for it in items if isinstance(it, dict) and it.get("name")})
 
 
+def fetch_tag_names() -> list[str]:
+    """All existing Mealie tag names, sorted. Feeds the recipe-tags
+    autocomplete in review AND the extraction prompt (so the AI reuses existing
+    tags instead of spawning near-dupes). Returns [] if Mealie is unset."""
+    url, token = _mealie()
+    if not (url and token):
+        return []
+    with httpx.Client(
+        base_url=url, headers={"Authorization": f"Bearer {token}"}, timeout=30
+    ) as client:
+        r = client.get("/api/organizers/tags", params={"perPage": -1})
+        r.raise_for_status()
+        items = _extract_items(r.json())
+        return sorted({it["name"] for it in items if isinstance(it, dict) and it.get("name")})
+
+
 def fetch_recipe_names() -> list[str]:
     """All existing Mealie recipe names, sorted. Feeds the review-step
     duplicate-name warning so the reviewer notices a name already in Mealie
@@ -417,6 +433,19 @@ def _patch_fields(client: httpx.Client, slug: str, recipe: dict, structured: boo
                 for name in category_names
             ]
         r = client.patch(f"/api/recipes/{slug}", json={"recipeCategory": cat_objs})
+        r.raise_for_status()
+
+    # Tags — resolve-or-create each name.
+    if "tags" in recipe:
+        tag_names = [t for t in (recipe.get("tags") or []) if t and str(t).strip()]
+        tag_objs = []
+        if tag_names:
+            tag_lookup = _load_lookup(client, "/api/organizers/tags")
+            tag_objs = [
+                _clean_category(_resolve(client, "/api/organizers/tags", "tag", name, tag_lookup))
+                for name in tag_names
+            ]
+        r = client.patch(f"/api/recipes/{slug}", json={"tags": tag_objs})
         r.raise_for_status()
 
     # Notes

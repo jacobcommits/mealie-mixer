@@ -48,13 +48,26 @@ SYSTEM_PROMPT = (
 )
 
 
-def build_user_prompt(target_language: str, user_note: str, source: str = "the image(s)", known_categories=(), units_system: str = "metric") -> str:
+def build_user_prompt(
+    target_language: str,
+    user_note: str,
+    source: str = "the image(s)",
+    known_categories=(),
+    known_tags=(),
+    units_system: str = "metric",
+) -> str:
     extra = f"\n\nExtra instructions from the user: {user_note}" if user_note.strip() else ""
     cat_rule = (
         "\n- For \"categories\", PREFER an existing category from this list when one "
         f"fits: {', '.join(known_categories)}. Only invent a new category name if "
         "none of them fit."
         if known_categories else ""
+    )
+    tag_rule = (
+        "\n- For \"tags\", PREFER an existing tag from this list when one "
+        f"fits: {', '.join(known_tags)}. Only invent a new tag name if "
+        "none of them fit."
+        if known_tags else ""
     )
     if units_system.lower() == "imperial":
         units_rule = "- Convert amounts measured by weight or volume to Imperial/US customary units (ounces, pounds, cups, fluid ounces). Convert temperatures to Fahrenheit. Keep tbsp/tsp/pinch as-is."
@@ -95,7 +108,7 @@ Rules:
 - NEVER merge two different foods into one ingredient (e.g. "salt and pepper", "oil or lard" is fine as alternatives but "salt and pepper" is two foods). Emit a separate ingredient for each, even if they share an amount or are both "to taste".
 - If there is no clear amount (e.g. "salt to taste"), set quantity to null and put the descriptor in "note".
 - For a range like "1.2 to 1.4 kg", pick the higher number and note the range.
-- Do NOT invent anything not shown in the source.{cat_rule}{extra}
+- Do NOT invent anything not shown in the source.{cat_rule}{tag_rule}{extra}
 
 Respond with ONLY a JSON object in exactly this shape — no markdown, no commentary:
 {{"recipes": [{{"name": "...", "description": "...", "servings": 4, "yield": "4 servings", "ingredients": [{{"quantity": 1.4, "unit": "kg", "food": "ground beef", "note": "80/20", "title": "For the sauce"}}, {{"quantity": 2, "unit": null, "food": "egg", "note": null, "title": null}}, {{"quantity": 2, "unit": "clove", "food": "garlic", "note": null, "title": null}}], "instructions": ["..."], "tags": ["..."], "categories": ["Main Course"], "notes": [{{"title": "Storage", "text": "Keeps 3 days in the fridge."}}]}}]}}"""

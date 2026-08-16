@@ -45,6 +45,7 @@ from push import (
     fetch_recipe,
     fetch_recipe_names,
     fetch_recipes,
+    fetch_tag_names,
     push_recipe,
     recipe_to_text,
     test_mealie,
@@ -671,6 +672,12 @@ def api_foods():
 def api_categories():
     """Category names for the review-step autocomplete (session or key auth)."""
     return {"categories": fetch_category_names()}
+
+
+@router.get("/tags", dependencies=[Depends(require_access)])
+def api_tags():
+    """Tag names for the review-step autocomplete (session or key auth)."""
+    return {"tags": fetch_tag_names()}
 
 
 @router.get("/recipe-names", dependencies=[Depends(require_access)])

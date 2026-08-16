@@ -287,33 +287,69 @@
                 <input class="input" type="text" x-model="recipe.yield" /></label>
             </div>
 
-            <h3>Categories</h3>
-            <div class="chips">
-              <template x-for="(c, i) in recipe.categories" :key="i">
-                <span class="chip">
-                  <span x-text="c"></span>
-                  <button class="cx" @click="removeCategory(i)" title="remove" aria-label="Remove category">✕</button>
-                </span>
-              </template>
-            </div>
-            
-            <!-- Category Autocomplete Custom Combobox -->
-            <div class="combobox-wrapper" x-data="{ open: false, activeIndex: -1 }" @click.away="open = false">
-              <input class="input" type="text" placeholder="Type category to add…"
-                     x-model="categoryInput"
-                     @focus="open = true; activeIndex = -1"
-                     @keydown.escape="open = false"
-                     @keydown.arrow-down.prevent="open = true; activeIndex = Math.min(activeIndex + 1, filteredCategories(categoryInput).length - 1)"
-                     @keydown.arrow-up.prevent="activeIndex = Math.max(activeIndex - 1, -1)"
-                     @keydown.enter.prevent="if (activeIndex >= 0) { categoryInput = filteredCategories(categoryInput)[activeIndex]; } addCategory(); open = false;" />
-              
-              <div class="combobox-options" x-show="open && filteredCategories(categoryInput).length" x-cloak>
-                <template x-for="(c, idx) in filteredCategories(categoryInput)" :key="c">
-                  <div class="combobox-option"
-                       :class="{ 'active': activeIndex === idx }"
-                       @click="categoryInput = c; addCategory(); open = false;"
-                       x-text="c"></div>
-                </template>
+            <div class="row">
+              <div class="field">
+                <h3>Categories</h3>
+                <div class="chips">
+                  <template x-for="(c, i) in recipe.categories" :key="i">
+                    <span class="chip">
+                      <span x-text="c"></span>
+                      <button class="cx" @click="removeCategory(i)" title="remove" aria-label="Remove category">✕</button>
+                    </span>
+                  </template>
+                </div>
+                
+                <!-- Category Autocomplete Custom Combobox -->
+                <div class="combobox-wrapper" x-data="{ open: false, activeIndex: -1 }" @click.away="open = false">
+                  <input class="input" type="text" placeholder="Type category to add…"
+                         x-model="categoryInput"
+                         @focus="open = true; activeIndex = -1"
+                         @keydown.escape="open = false"
+                         @keydown.arrow-down.prevent="open = true; activeIndex = Math.min(activeIndex + 1, filteredCategories(categoryInput).length - 1)"
+                         @keydown.arrow-up.prevent="activeIndex = Math.max(activeIndex - 1, -1)"
+                         @keydown.enter.prevent="if (activeIndex >= 0) { categoryInput = filteredCategories(categoryInput)[activeIndex]; } addCategory(); open = false;" />
+                  
+                  <div class="combobox-options" x-show="open && filteredCategories(categoryInput).length" x-cloak>
+                    <template x-for="(c, idx) in filteredCategories(categoryInput)" :key="c">
+                      <div class="combobox-option"
+                           :class="{ 'active': activeIndex === idx }"
+                           @click="categoryInput = c; addCategory(); open = false;"
+                           x-text="c"></div>
+                    </template>
+                  </div>
+                </div>
+              </div>
+
+              <div class="field">
+                <h3>Tags</h3>
+                <div class="chips">
+                  <template x-for="(t, i) in (recipe.tags || [])" :key="i">
+                    <span class="chip tag-chip">
+                      <span x-text="t"></span>
+                      <button class="cx" @click="removeTag(i)" title="remove" aria-label="Remove tag">✕</button>
+                    </span>
+                  </template>
+                </div>
+                
+                <!-- Tag Autocomplete Custom Combobox -->
+                <div class="combobox-wrapper" x-data="{ open: false, activeIndex: -1 }" @click.away="open = false">
+                  <input class="input" type="text" placeholder="Type tag to add…"
+                         x-model="tagInput"
+                         @focus="open = true; activeIndex = -1"
+                         @keydown.escape="open = false"
+                         @keydown.arrow-down.prevent="open = true; activeIndex = Math.min(activeIndex + 1, filteredTags(tagInput).length - 1)"
+                         @keydown.arrow-up.prevent="activeIndex = Math.max(activeIndex - 1, -1)"
+                         @keydown.enter.prevent="if (activeIndex >= 0) { tagInput = filteredTags(tagInput)[activeIndex]; } addTag(); open = false;" />
+                  
+                  <div class="combobox-options" x-show="open && filteredTags(tagInput).length" x-cloak>
+                    <template x-for="(t, idx) in filteredTags(tagInput)" :key="t">
+                      <div class="combobox-option"
+                           :class="{ 'active': activeIndex === idx }"
+                           @click="tagInput = t; addTag(); open = false;"
+                           x-text="t"></div>
+                    </template>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -330,21 +366,26 @@
                     
                     <!-- Food Autocomplete Custom Combobox -->
                     <div class="combobox-wrapper" x-data="{ open: false, activeIndex: -1 }" @click.away="open = false">
-                      <input class="input food" placeholder="food name" x-model="ing.food"
-                             @focus="open = true; activeIndex = -1"
-                             @keydown.escape="open = false"
-                             @keydown.arrow-down.prevent="open = true; activeIndex = Math.min(activeIndex + 1, filteredFoods(ing.food).length - 1)"
-                             @keydown.arrow-up.prevent="activeIndex = Math.max(activeIndex - 1, -1)"
-                             @keydown.enter.prevent="if (activeIndex >= 0) { ing.food = filteredFoods(ing.food)[activeIndex]; } open = false;"
-                             :class="ing.food && ing.food.trim() ? 'fs-' + foodStatus(ing.food) : ''"
-                             :title="{exists:'Matched in Mealie',near:'Near-match in Mealie',new:'New food — will be created'}[foodStatus(ing.food)] || ''" />
+                      <div style="display: flex; align-items: center; gap: 4px;">
+                        <input class="input food" placeholder="food name" x-model="ing.food"
+                               @focus="open = true; activeIndex = -1"
+                               @keydown.escape="open = false"
+                               @keydown.arrow-down.prevent="open = true; activeIndex = Math.min(activeIndex + 1, filteredFoods(ing.food).length - 1)"
+                               @keydown.arrow-up.prevent="activeIndex = Math.max(activeIndex - 1, -1)"
+                               @keydown.enter.prevent="if (activeIndex >= 0) { ing.food = filteredFoods(ing.food)[activeIndex].name; } open = false;"
+                               :class="ing.food && ing.food.trim() ? 'fs-' + foodStatus(ing.food) : ''"
+                               :title="{exists:'Matched in Mealie',near:'Near-match in Mealie',new:'New food — will be created'}[foodStatus(ing.food)] || ''" />
+                        <button type="button" class="btn ghost sm iconbtn" @click="openFoodPicker(ing)" title="Search Mealie food database" style="padding: 6px 8px; flex: none;">🔍</button>
+                      </div>
                       
                       <div class="combobox-options" x-show="open && filteredFoods(ing.food).length" x-cloak>
-                        <template x-for="(f, idx) in filteredFoods(ing.food)" :key="f">
-                          <div class="combobox-option"
+                        <template x-for="(f, idx) in filteredFoods(ing.food)" :key="f.name">
+                          <div class="combobox-option combobox-option-badge"
                                :class="{ 'active': activeIndex === idx }"
-                               @click="ing.food = f; open = false;"
-                               x-text="f"></div>
+                               @click="ing.food = f.name; open = false;">
+                            <span x-text="f.name"></span>
+                            <span class="cb-badge cb-badge-exists">In Mealie</span>
+                          </div>
                         </template>
                       </div>
                     </div>
@@ -367,9 +408,10 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                       </button>
                     </div>
-                    <button class="foodhint" type="button" x-show="nearestFood(ing.food)"
-                            @click="ing.food = nearestFood(ing.food)"
-                            x-text="'↳ Matched food: ' + nearestFood(ing.food) + '?'"></button>
+                    <button class="match-pill" type="button" x-show="nearestFood(ing.food)"
+                            @click="ing.food = nearestFood(ing.food)">
+                      <span class="match-icon">↳</span> Use Mealie food: <strong x-text="'&quot;' + nearestFood(ing.food) + '&quot;'"></strong>
+                    </button>
                     <button class="foodhint" type="button" x-show="!ing.title"
                             @click="ing.title = 'Section'">§ Section heading</button>
                   </div>
@@ -810,6 +852,27 @@
       <div class="row">
         <button class="btn ghost" @click="cancelDup()">Cancel</button>
         <button class="btn primary" @click="confirmDup()">Push anyway</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mealie Food Database Picker Modal (Batch 3) -->
+  <div class="modal" x-show="foodPickerModal" @click.self="foodPickerModal = false" x-transition.opacity x-cloak>
+    <div class="modalbox picker-box">
+      <div class="picker-hdr">
+        <h2>🔍 Mealie Food Database</h2>
+        <button type="button" class="x" @click="foodPickerModal = false">✕</button>
+      </div>
+      <p class="muted small" style="margin-bottom: 8px;">Pick an existing food from your Mealie database to ensure perfect ingredient matching.</p>
+      <input class="input picker-search" type="text" placeholder="Type to filter foods…" x-model="foodPickerSearch" autofocus />
+      <div class="picker-list">
+        <template x-for="f in filteredPickerFoods()" :key="f">
+          <button type="button" class="picker-item" @click="selectPickerFood(f)">
+            <span class="picker-name" x-text="f"></span>
+            <span class="cb-badge cb-badge-exists">In Mealie</span>
+          </button>
+        </template>
+        <div x-show="!filteredPickerFoods().length" class="muted small" style="padding: 16px; text-align: center;">No matching foods found in Mealie.</div>
       </div>
     </div>
   </div>
