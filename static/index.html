@@ -8,8 +8,8 @@
   <link rel="icon" type="image/png" href="/icons/favicon.png" />
   <link rel="apple-touch-icon" href="/icons/icon-180.png" />
   <title>Mealie Mixer</title>
-  <link rel="stylesheet" href="/style.css?v=0.23.0" />
-  <script defer src="/app.js?v=0.23.0"></script>
+  <link rel="stylesheet" href="/style.css?v=0.24.0" />
+  <script defer src="/app.js?v=0.24.0"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -842,10 +842,23 @@
 
   <div class="overlay" x-show="loading" x-transition.opacity x-cloak>
     <div class="spinner big"></div>
-    <p x-text="loadingMsg"></p>
+    <p x-text="loadingMsg" style="font-weight:600; margin-top: 0.5rem;"></p>
     <div class="cbbar" x-show="audioProgress > 0" x-cloak style="max-width:240px">
       <div class="cbbar-fill" :style="'width:' + Math.round(audioProgress * 100) + '%'"></div>
     </div>
+
+    <!-- Real-time Live Log Console -->
+    <div class="extract-log-box" x-show="extractLogs &amp;&amp; extractLogs.length" x-cloak>
+      <div class="extract-log-header">
+        <span>⚡ Live Execution Log</span>
+      </div>
+      <div class="extract-log-terminal" x-ref="logTerminal">
+        <template x-for="(log, idx) in extractLogs" :key="idx">
+          <div class="log-line" x-text="log" :class="log.includes('❌') ? 'log-err' : (log.includes('✨') || log.includes('✅') ? 'log-success' : '')"></div>
+        </template>
+      </div>
+    </div>
+
     <button class="btn ghost sm" x-show="loading" x-cloak @click="cancelExtract()" style="margin-top:1rem">Cancel</button>
   </div>
   

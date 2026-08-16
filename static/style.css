@@ -1962,3 +1962,45 @@ small {
 .slider-group input[type="range"] {
   accent-color: var(--accent);
 }
+
+/* ── Live Log Terminal Console (v0.24.0) ── */
+.extract-log-box {
+  width: 90%;
+  max-width: 520px;
+  margin-top: 1rem;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.extract-log-header {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #94a3b8;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.extract-log-terminal {
+  max-height: 140px;
+  overflow-y: auto;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #e2e8f0;
+}
+.log-line {
+  margin-bottom: 3px;
+  word-break: break-word;
+}
+.log-err {
+  color: #f87171;
+  font-weight: bold;
+}
+.log-success {
+  color: #4ade80;
+  font-weight: bold;
+}
