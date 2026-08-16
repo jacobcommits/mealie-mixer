@@ -69,13 +69,23 @@ def ingredient_to_text(ing: dict) -> str:
     return line.strip()
 
 
+def _extract_items(data) -> list:
+    """Extract item list safely whether Mealie returns a paginated dict
+    {"items": [...]} or a raw list [...]."""
+    if isinstance(data, dict):
+        return data.get("items", []) or []
+    if isinstance(data, list):
+        return data
+    return []
+
+
 # ── Step 4: structured ingredients (resolve-or-create foods + units) ─────
 def _load_lookup(client: httpx.Client, endpoint: str) -> dict[str, dict]:
     """Fetch every food/unit (perPage=-1) and map lowercased name -> object."""
     r = client.get(endpoint, params={"perPage": -1})
     r.raise_for_status()
-    items = r.json().get("items", [])
-    return {it["name"].strip().lower(): it for it in items if it.get("name")}
+    items = _extract_items(r.json())
+    return {it["name"].strip().lower(): it for it in items if isinstance(it, dict) and it.get("name")}
 
 
 def fetch_food_names() -> list[str]:
@@ -90,7 +100,8 @@ def fetch_food_names() -> list[str]:
     ) as client:
         r = client.get("/api/foods", params={"perPage": -1})
         r.raise_for_status()
-        return sorted({it["name"] for it in r.json().get("items", []) if it.get("name")})
+        items = _extract_items(r.json())
+        return sorted({it["name"] for it in items if isinstance(it, dict) and it.get("name")})
 
 
 def fetch_category_names() -> list[str]:
@@ -105,7 +116,8 @@ def fetch_category_names() -> list[str]:
     ) as client:
         r = client.get("/api/organizers/categories", params={"perPage": -1})
         r.raise_for_status()
-        return sorted({it["name"] for it in r.json().get("items", []) if it.get("name")})
+        items = _extract_items(r.json())
+        return sorted({it["name"] for it in items if isinstance(it, dict) and it.get("name")})
 
 
 def fetch_recipe_names() -> list[str]:
@@ -126,9 +138,9 @@ def fetch_recipes() -> list[dict]:
     ) as client:
         r = client.get("/api/recipes", params={"perPage": -1})
         r.raise_for_status()
-        items = r.json().get("items", [])
+        items = _extract_items(r.json())
         return sorted(
-            [{"slug": it["slug"], "name": it["name"]} for it in items if it.get("slug") and it.get("name")],
+            [{"slug": it["slug"], "name": it["name"]} for it in items if isinstance(it, dict) and it.get("slug") and it.get("name")],
             key=lambda x: x["name"].lower(),
         )
 
@@ -313,6 +325,32 @@ def build_structured_ingredients(client: httpx.Client, recipe: dict) -> list[dic
     return out
 
 
+def _clean_category(cat: dict) -> dict:
+    """Sanitize a Mealie category object for PATCH payloads.
+    Strips internal read-only fields (e.g. recipes, createdAt, updatedAt, userId)
+    that can cause Mealie Pydantic validation errors (422 / 400)."""
+    clean = {}
+    if isinstance(cat, dict):
+        if cat.get("id"):
+            clean["id"] = str(cat["id"])
+        if cat.get("name"):
+            clean["name"] = str(cat["name"])
+        if cat.get("slug"):
+            clean["slug"] = str(cat["slug"])
+    return clean
+
+
+def _format_mealie_error(e: Exception) -> Exception:
+    """Format an httpx.HTTPStatusError to include Mealie's response status and body."""
+    if isinstance(e, httpx.HTTPStatusError) and e.response is not None:
+        body = (e.response.text or "").strip()
+        msg = f"Mealie HTTP {e.response.status_code}"
+        if body:
+            msg += f": {body[:300]}"
+        return RuntimeError(msg)
+    return e
+
+
 def _patch_fields(client: httpx.Client, slug: str, recipe: dict, structured: bool = True) -> None:
     """PATCH an existing Mealie recipe's editable fields — one PATCH per field
     (Mealie landmine: combining fields causes vague 400s). Shared by both
@@ -369,13 +407,15 @@ def _patch_fields(client: httpx.Client, slug: str, recipe: dict, structured: boo
         r.raise_for_status()
 
     # Categories — resolve-or-create each name.
-    category_names = [c for c in (recipe.get("categories") or []) if c and str(c).strip()]
-    if category_names:
-        cat_lookup = _load_lookup(client, "/api/organizers/categories")
-        cat_objs = [
-            _resolve(client, "/api/organizers/categories", "category", name, cat_lookup)
-            for name in category_names
-        ]
+    if "categories" in recipe:
+        category_names = [c for c in (recipe.get("categories") or []) if c and str(c).strip()]
+        cat_objs = []
+        if category_names:
+            cat_lookup = _load_lookup(client, "/api/organizers/categories")
+            cat_objs = [
+                _clean_category(_resolve(client, "/api/organizers/categories", "category", name, cat_lookup))
+                for name in category_names
+            ]
         r = client.patch(f"/api/recipes/{slug}", json={"recipeCategory": cat_objs})
         r.raise_for_status()
 
@@ -444,7 +484,7 @@ def push_recipe(recipe: dict, client: httpx.Client | None = None, structured: bo
         finished = True
         print(f"  done -> {mealie_url}/g/home/r/{slug}", file=sys.stderr)
         return slug
-    except Exception:
+    except Exception as e:
         # A failure mid-push leaves a half-created recipe (shell + some fields).
         # Roll it back so a failed push leaves nothing behind.
         if slug and not finished:
@@ -453,7 +493,7 @@ def push_recipe(recipe: dict, client: httpx.Client | None = None, structured: bo
                 client.delete(f"/api/recipes/{slug}")
             except Exception:
                 pass
-        raise
+        raise _format_mealie_error(e)
     finally:
         if owns_client:
             client.close()
@@ -491,11 +531,11 @@ def update_recipe(slug: str, recipe: dict, client: httpx.Client | None = None) -
         _patch_fields(client, slug, recipe, structured=True)
         print(f"  updated -> {mealie_url}/g/home/r/{slug}", file=sys.stderr)
         return slug
-    except Exception:
+    except Exception as e:
         # CRITICAL: do NOT delete-on-failure — this is a real recipe the user
         # already has. Leave it as-is and surface the error.
         print(f"  ! update failed for {slug} — recipe left as-is", file=sys.stderr)
-        raise
+        raise _format_mealie_error(e)
     finally:
         if owns_client:
             client.close()

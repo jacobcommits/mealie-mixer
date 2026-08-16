@@ -650,10 +650,11 @@ def _normalize(recipes: list[dict]) -> list[dict]:
         if isinstance(cats, str):
             cats = [cats]
         clean: list[str] = []
-        for c in cats:
-            c = str(c).strip()
-            if c and c.lower() not in {x.lower() for x in clean}:
-                clean.append(c)
+        if isinstance(cats, (list, tuple)):
+            for c in cats:
+                c = str(c or "").strip()
+                if c and c.lower() not in {x.lower() for x in clean}:
+                    clean.append(c)
         r["categories"] = clean
         # notes: a clean list of {title, text} dicts. Drop entries with no text
         # (a bare title is useless), coerce both fields to stripped strings.
