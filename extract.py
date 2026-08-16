@@ -428,115 +428,74 @@ def _assert_safe_url(url: str) -> None:
             )
 
 
-def _extract_raw_html_text(html: str) -> str:
-    """Fallback text extractor when recipe-scrapers finds no structured recipe.
-    Extracts readable text from HTML for the LLM."""
-    try:
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(html, "html.parser")
-        for tag in soup(["script", "style", "nav", "footer", "header", "aside", "form"]):
-            tag.decompose()
-        text = soup.get_text(separator="\n")
-        lines = [line.strip() for line in text.splitlines() if line.strip()]
-        return "\n".join(lines[:250])
-    except Exception:
-        clean = re.sub(r"<(script|style|nav|footer|header)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
-        clean = re.sub(r"<[^>]+>", "\n", clean)
-        lines = [line.strip() for line in clean.splitlines() if line.strip()]
-        return "\n".join(lines[:250])
-
-
 def _scrape_url(url: str) -> tuple[str, str]:
     """Fetch a URL and pull a rough recipe text block + the dish photo URL out
     of it. Raises a clear error if no structured recipe is found on the page."""
-    import httpx
     from recipe_scrapers import scrape_html
 
     _assert_safe_url(url)
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
-    try:
-        resp = httpx.get(url, headers=headers, follow_redirects=True, timeout=15)
-        resp.raise_for_status()
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 403:
-            raise ValueError("That site blocked automated access (403 Forbidden). Screenshot the recipe page and use the Photo tab instead.")
-        raise ValueError(f"Site returned HTTP {e.response.status_code} ({e.response.reason_phrase}).")
-    except Exception as e:
-        raise ValueError(f"Could not reach site ({str(e)[:100]}).")
+    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) MealieMixer/1.0"}
+    resp = httpx.get(url, headers=headers, follow_redirects=True, timeout=30)
+    resp.raise_for_status()
 
-    if "Enable JavaScript and cookies to continue" in resp.text or "Access Denied" in resp.text:
-        raise ValueError("That site requires JavaScript / Cloudflare verification. Screenshot the recipe page and use the Photo tab instead.")
+    scraper = scrape_html(resp.text, org_url=url, wild_mode=True)
 
-    page_text = ""
-    image_url = ""
-    try:
-        scraper = scrape_html(resp.text, org_url=url, wild_mode=True)
-        parts: list[str] = []
-        def grab(label, fn):
-            try:
-                val = fn()
-            except Exception:
-                return
-            if not val:
-                return
-            if isinstance(val, (list, tuple)):
-                val = "\n".join(str(v) for v in val)
-            parts.append(f"{label}:\n{val}")
-
-        grab("Title", scraper.title)
-        grab("Yields", scraper.yields)
-        grab("Ingredients", scraper.ingredients)
-        grab("Instructions", scraper.instructions)
-
+    parts: list[str] = []
+    def grab(label, fn):
         try:
-            image_url = scraper.image() or ""
+            val = fn()
         except Exception:
-            image_url = ""
+            return
+        if not val:
+            return
+        if isinstance(val, (list, tuple)):
+            val = "\n".join(str(v) for v in val)
+        parts.append(f"{label}:\n{val}")
 
-        page_text = "\n\n".join(parts).strip()
+    grab("Title", scraper.title)
+    grab("Yields", scraper.yields)
+    grab("Ingredients", scraper.ingredients)
+    grab("Instructions", scraper.instructions)
+
+    try:
+        image_url = scraper.image() or ""
     except Exception:
-        page_text = ""
+        image_url = ""
 
-    if not page_text.strip():
-        page_text = _extract_raw_html_text(resp.text)
-
-    if not page_text.strip():
-        raise ValueError("No recipe text found on that web page — try screenshotting the recipe instead.")
-
-    return page_text, image_url
+    text = "\n\n".join(parts).strip()
+    if not text:
+        raise ValueError(
+            "Couldn't find a recipe at that link — no structured recipe data on the page. "
+            "(For social posts use the video path; if the recipe is only in the video, screenshot it.)"
+        )
+    return text, image_url
 
 
 # ── Social / video import (yt-dlp) — Phase 1: caption only ──────────────
-VIDEO_HOSTS = (
-    "instagram.com", "tiktok.com", "youtube.com", "youtu.be",
-    "facebook.com", "fb.watch",
-)
-
-
 def is_video_url(url: str) -> bool:
-    """True if the URL is a social/video host we route through yt-dlp instead of
-    the schema.org recipe scraper."""
+    """True if this is an Instagram / TikTok / YouTube / FB video post link."""
     u = (url or "").lower()
-    return any(host in u for host in VIDEO_HOSTS)
+    return any(domain in u for domain in [
+        "instagram.com/reel", "instagram.com/p", "instagram.com/tv",
+        "tiktok.com", "vm.tiktok.com",
+        "youtube.com/watch", "youtu.be", "youtube.com/shorts",
+        "facebook.com/reel", "fb.watch", "facebook.com/watch",
+    ])
 
 
 def _video_metadata(url: str) -> dict:
-    """A social post's caption/description + thumbnail via yt-dlp — metadata only,
-    no video download, no ffmpeg."""
+    """Fetch video post title/caption and thumbnail image URL via yt-dlp.
+    No video file is downloaded (skip_download=True) — fast, zero storage."""
     import yt_dlp  # lazy: only needed on the video path
 
     _assert_safe_url(url)
-    opts = {"quiet": True, "skip_download": True, "noplaylist": True, "no_warnings": True, "socket_timeout": 15}
+    opts = {"quiet": True, "skip_download": True, "noplaylist": True, "no_warnings": True}
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
     return {
-        "title": info.get("title") or "",
-        "description": info.get("description") or "",
-        "thumbnail": info.get("thumbnail") or "",
+        "title": (info.get("title") or "").strip(),
+        "description": (info.get("description") or "").strip(),
+        "thumbnail": (info.get("thumbnail") or "").strip(),
     }
 
 
@@ -545,125 +504,109 @@ def extract_recipes_from_video(
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
-    known_tags=(),
     units_system: str = "metric",
 ) -> list[dict]:
     """Extract a recipe from a social VIDEO post (TikTok / Reel / Short / FB).
-
-    Phase 1: read the post's CAPTION (+ title) via yt-dlp and structure it with
-    the SAME LLM call as every other path. Works when the creator wrote the recipe
-    in the caption; if it's only spoken/shown in the video the caption is empty and
-    we raise a clear 'screenshot it instead' error. The post thumbnail becomes the
-    dish photo; the link is saved as the source.
-    """
-    try:
-        meta = _video_metadata(url)
-    except Exception as e:
+    Pulls the caption/description text + video thumbnail and passes them to the LLM.
+    If the recipe text isn't in the caption (e.g. video overlay only), raises a clear
+    error so the UI suggests taking a screenshot or dictating a voice note instead."""
+    meta = _video_metadata(url)
+    caption = (meta.get("description") or meta.get("title") or "").strip()
+    if not caption:
         raise ValueError(
-            "Couldn't read that social link — it may be private/login-walled or "
-            f"unsupported. Screenshot the post and share the image instead. ({str(e)[:150]})"
+            "Couldn't read any text from that video post. If the recipe is only written "
+            "inside the video itself, take a screenshot of the ingredients and upload it under Photo, "
+            "or record a voice note dictating what you see."
         )
 
-    title, caption = meta["title"], meta["description"]
-    if not caption.strip():
-        raise ValueError(
-            "No recipe text in this post's caption (it may only be in the video). "
-            "Screenshot the post and share the image instead."
-        )
-
-    parts = [f"Title: {title}"] if title else []
-    parts.append(f"Caption:\n{caption}")
-    source_text = "\n\n".join(parts)
-
+    # Make thumbnail available as image_url on the extracted recipe
+    source_text = f"Title: {meta.get('title')}\n\nCaption / Description:\n{caption}"
     prompt = build_user_prompt(
         target_language, user_note,
         source="the social-media post text below", known_categories=known_categories,
-        known_tags=known_tags, units_system=units_system,
+        units_system=units_system,
     )
     content = [{"type": "text", "text": f"{prompt}\n\n--- POST TEXT ---\n{source_text}"}]
     recipes = _structure(content)
-    for r in recipes:
-        if meta["thumbnail"]:
-            r["image_url"] = meta["thumbnail"]
-        r["source_url"] = url
+    # attach thumbnail if LLM didn't return an image URL
+    if meta.get("thumbnail"):
+        for r in recipes:
+            if not r.get("image_url"):
+                r["image_url"] = meta["thumbnail"]
+            if not r.get("source_url"):
+                r["source_url"] = url
     return recipes
 
 
+# ── Unified extraction (B3 multi-source combine) ───────────────────────
 def extract_recipes_from_sources(
-    image_paths: list[str] | None = None,
+    image_paths: list[str] = (),
     url: str = "",
     text: str = "",
-    doc_texts: list[str] | None = None,
+    doc_texts: list[str] = (),
     audio_path: str = "",
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
-    known_tags=(),
     units_system: str = "metric",
     progress=None,
 ) -> list[dict]:
-    """Unified combine extractor: takes ANY combination of inputs (images, a URL,
-    pasted text, uploaded documents, and a voice note), builds a single multimodal
-    prompt where the text parts are clearly labelled blocks, and runs ONE extraction.
-    Used by /api/extract (sync) and /api/extract/job (async)."""
-    url = (url or "").strip()
-    image_paths = list(image_paths or [])
-    doc_texts = [t for t in (doc_texts or []) if t and t.strip()]
+    """Combine any mix of sources (photos, link, pasted text, PDFs, voice note)
+    into structured recipe(s). Single unified pipeline used by B3 combine jobs."""
+    if progress:
+        try:
+            progress(0.1)
+        except Exception:
+            pass
 
     text_blocks: list[str] = []
     page_image_url = ""
-    url_error: str | None = None
 
     if url:
         if is_video_url(url):
             try:
                 meta = _video_metadata(url)
-                cap = "\n\n".join(p for p in [
-                    f"Title: {meta['title']}" if meta.get("title") else "",
-                    f"Caption:\n{meta['description']}" if meta.get("description") else "",
-                ] if p)
+                cap = (meta.get("description") or meta.get("title") or "").strip()
                 if cap.strip():
                     text_blocks.append(f"--- LINKED POST CAPTION ---\n{cap}")
                 page_image_url = meta.get("thumbnail") or ""
-            except Exception as e:
-                url_error = str(e)
+            except Exception:
+                pass
         else:
             try:
                 source_text, page_image_url = _scrape_url(url)
                 if source_text.strip():
                     text_blocks.append(f"--- LINKED PAGE ---\n{source_text}")
-            except Exception as e:
-                url_error = str(e)
+            except Exception:
+                pass
 
     if text and text.strip():
         text_blocks.append(f"--- PASTED TEXT ---\n{text.strip()}")
 
     for dt in doc_texts:
-        text_blocks.append(f"--- DOCUMENT ---\n{dt.strip()}")
+        if dt.strip():
+            text_blocks.append(f"--- ATTACHED DOCUMENT ---\n{dt.strip()}")
 
     if audio_path:
         import transcribe
-        transcript = transcribe.transcribe_audio(audio_path, progress=progress)
-        if transcript.strip():
-            text_blocks.append(f"--- SPOKEN (transcribed from audio/video) ---\n{transcript.strip()}")
-        elif not text_blocks and not image_paths:
-            raise ValueError(
-                "Couldn't make out any speech in that audio — try again, a bit closer to the mic."
+        transcript = transcribe.transcribe_audio(audio_path)
+        if transcript and transcript.strip():
+            text_blocks.append(
+                f"--- SPOKEN (transcribed from audio/video) ---\n{transcript.strip()}"
             )
 
     if not text_blocks and not image_paths:
-        if url_error:
-            raise ValueError(url_error)
         raise ValueError(
             "Nothing to extract from — add a photo, a link, some text, or a voice note / video."
         )
 
     prompt = build_user_prompt(
         target_language, user_note,
-        source="the provided sources", known_categories=known_categories, known_tags=known_tags, units_system=units_system,
+        source="the provided sources", known_categories=known_categories, units_system=units_system,
     )
     text_payload = prompt + ("\n\n" + "\n\n".join(text_blocks) if text_blocks else "")
     content = [{"type": "text", "text": text_payload}]
+
     for p in image_paths:
         content.append({"type": "image_url", "image_url": {"url": image_to_data_url(p)}})
 

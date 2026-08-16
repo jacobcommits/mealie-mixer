@@ -286,12 +286,18 @@ function mixer() {
       if (this.fileList && this.fileList.length) this.sourceImages = [...this.fileList].filter(f => (f.type || '').startsWith('image/')).map(f => URL.createObjectURL(f));
       try {
         const fd = new FormData();
-        if (this.fileList && this.fileList.length) { for (const f of this.fileList) fd.append('files', f); }
-        if (this.url && this.url.trim()) { fd.append('url', this.url.trim()); }
-        if (this.pastedText && this.pastedText.trim()) { fd.append('text', this.pastedText.trim()); }
-        fd.append('language', this.language || 'English');
-        fd.append('prompt', this.prompt || '');
-        fd.append('units_system', this.unitsSystem || 'metric');
+        if (this.activeTab === 'link') {
+          if (this.url.trim()) fd.append('url', this.url.trim());
+        } else if (this.activeTab === 'photo') {
+          if (this.fileList && this.fileList.length) { for (const f of this.fileList) fd.append('files', f); }
+        } else if (this.activeTab === 'text') {
+          if (this.pastedText.trim()) fd.append('text', this.pastedText.trim());
+        } else {
+          if (this.fileList && this.fileList.length) { for (const f of this.fileList) fd.append('files', f); }
+          if (this.url.trim()) { fd.append('url', this.url.trim()); }
+          if (this.pastedText.trim()) { fd.append('text', this.pastedText.trim()); }
+        }
+        fd.append('language', this.language); fd.append('prompt', this.prompt || ''); fd.append('units_system', this.unitsSystem);
 
         const r = await fetch('/api/extract', { method: 'POST', body: fd, credentials: 'same-origin' });
         if (!r.ok) throw new Error(await detail(r));
