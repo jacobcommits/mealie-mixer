@@ -206,6 +206,7 @@ class ConfigBody(BaseModel):
     ai_key: str = ""
     ai_base: str = ""
     ai_model: str = ""
+    ai_rules: str = ""
     auth_user: str = ""
     auth_pass: str = ""
     api_key: str = ""
@@ -515,6 +516,7 @@ def api_get_config(request: Request):
             "mealie_url": config.get("MEALIE_URL"),
             "ai_base_url": config.get("AI_BASE_URL"),
             "ai_model": config.get("AI_MODEL"),
+            "ai_rules": config.get("AI_RULES"),
             "ai_rpm": config.get("AI_RPM_LIMIT"),
             "auth_user": config.get("MIXER_AUTH_USER"),
             "has_mealie_token": bool(config.get("MEALIE_TOKEN")),
@@ -531,6 +533,7 @@ def api_set_config(body: ConfigBody):
         core.apply_config(
             mealie_url=body.mealie_url, mealie_token=body.mealie_token,
             ai_key=body.ai_key, ai_base=body.ai_base, ai_model=body.ai_model,
+            ai_rules=body.ai_rules,
             auth_user=body.auth_user, auth_pass=body.auth_pass, api_key=body.api_key,
             ai_rpm=body.ai_rpm,
         )

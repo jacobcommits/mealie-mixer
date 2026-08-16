@@ -55,7 +55,13 @@ def build_user_prompt(
     known_categories=(),
     known_tags=(),
     units_system: str = "metric",
+    ai_rules: str | None = None,
 ) -> str:
+    active_rules = (config.get("AI_RULES") if ai_rules is None else ai_rules) or ""
+    preset_rule = (
+        f"\n- Household & dietary rules (ALWAYS follow these): {active_rules.strip()}"
+        if active_rules and active_rules.strip() else ""
+    )
     extra = f"\n\nExtra instructions from the user: {user_note}" if user_note.strip() else ""
     cat_rule = (
         "\n- For \"categories\", PREFER an existing category from this list when one "
@@ -108,7 +114,7 @@ Rules:
 - NEVER merge two different foods into one ingredient (e.g. "salt and pepper", "oil or lard" is fine as alternatives but "salt and pepper" is two foods). Emit a separate ingredient for each, even if they share an amount or are both "to taste".
 - If there is no clear amount (e.g. "salt to taste"), set quantity to null and put the descriptor in "note".
 - For a range like "1.2 to 1.4 kg", pick the higher number and note the range.
-- Do NOT invent anything not shown in the source.{cat_rule}{tag_rule}{extra}
+- Do NOT invent anything not shown in the source.{preset_rule}{cat_rule}{tag_rule}{extra}
 
 Respond with ONLY a JSON object in exactly this shape — no markdown, no commentary:
 {{"recipes": [{{"name": "...", "description": "...", "servings": 4, "yield": "4 servings", "ingredients": [{{"quantity": 1.4, "unit": "kg", "food": "ground beef", "note": "80/20", "title": "For the sauce"}}, {{"quantity": 2, "unit": null, "food": "egg", "note": null, "title": null}}, {{"quantity": 2, "unit": "clove", "food": "garlic", "note": null, "title": null}}], "instructions": ["..."], "tags": ["..."], "categories": ["Main Course"], "notes": [{{"title": "Storage", "text": "Keeps 3 days in the fridge."}}]}}]}}"""

@@ -1893,3 +1893,53 @@ small {
   font-weight: 500;
 }
 
+/* Image Cropper Modal (Batch 5) */
+.cropper-box {
+  max-width: 580px;
+  width: 92vw;
+  padding: 20px;
+}
+.crop-canvas-wrapper {
+  width: 100%;
+  max-height: 300px;
+  background: #000000;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.crop-canvas {
+  max-width: 100%;
+  max-height: 290px;
+  object-fit: contain;
+}
+.cropper-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--surface2);
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.cropper-sliders {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+}
+.cropper-sliders label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.cropper-sliders input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+

@@ -66,7 +66,7 @@ def _clean_rpm(v) -> str:
 
 
 def apply_config(*, mealie_url, mealie_token, ai_key, ai_base, ai_model,
-                 auth_user, auth_pass, api_key="", ai_rpm=""):
+                 auth_user, auth_pass, api_key="", ai_rpm="", ai_rules=""):
     """Validate + persist config to the data volume.
 
     Mealie URL/token + AI key are required. AI base/model fall back to defaults.
@@ -84,6 +84,7 @@ def apply_config(*, mealie_url, mealie_token, ai_key, ai_base, ai_model,
         "AI_API_KEY": (ai_key or "").strip() or config.get("AI_API_KEY"),
         "AI_BASE_URL": (ai_base or "").strip() or config.DEFAULTS["AI_BASE_URL"],
         "AI_MODEL": (ai_model or "").strip() or config.DEFAULTS["AI_MODEL"],
+        "AI_RULES": (ai_rules or "").strip(),
         "MIXER_API_KEY": (api_key or "").strip() or config.get("MIXER_API_KEY"),
         # rate limit: a non-negative number, else blank (= no limit). Visible field, so
         # blank clears it rather than keeping the old value.

@@ -28,6 +28,7 @@ function mixer() {
     recipe: emptyRecipe(), instructionsText: '', queue: [],
     photoFile: null, photoPreview: '', categoryInput: '', tagInput: '',
     foodPickerModal: false, foodPickerSearch: '', pickerTargetIng: null,
+    cropperModal: false, cropTargetIndex: null, cropRotate: 0, cropMargins: { top: 0, bottom: 0, left: 0, right: 0 },
     sourceImages: [], zoomSrc: '',
     dupModal: false, _dupOk: false,
     // cookbook (B7, dev)
@@ -87,6 +88,7 @@ function mixer() {
         mealie_url: c.mealie_url || '', mealie_token: '', ai_key: '', api_key: '',
         ai_base: c.ai_base_url || 'https://generativelanguage.googleapis.com/v1beta/openai/',
         ai_model: c.ai_model || 'gemini-3.1-flash-lite',
+        ai_rules: c.ai_rules || '',
         ai_rpm: c.ai_rpm || '',
         auth_user: c.auth_user || '', auth_pass: '',
       };
@@ -519,6 +521,61 @@ function mixer() {
       if (!q) return (this.foods || []).slice(0, 50);
       return (this.foods || []).filter(f => f.toLowerCase().includes(q)).slice(0, 50);
     },
+    openCropper(index) {
+      if (!this.fileList || !this.fileList[index]) return;
+      this.cropTargetIndex = index;
+      this.cropRotate = 0;
+      this.cropMargins = { top: 0, bottom: 0, left: 0, right: 0 };
+      this.cropperModal = true;
+      this.$nextTick(() => this.renderCropperCanvas());
+    },
+    rotateCrop() {
+      this.cropRotate = (this.cropRotate + 90) % 360;
+      this.renderCropperCanvas();
+    },
+    renderCropperCanvas() {
+      const canvas = this.$refs.cropCanvas;
+      if (!canvas || this.cropTargetIndex == null || !this.fileList || !this.fileList[this.cropTargetIndex]) return;
+      const file = this.fileList[this.cropTargetIndex];
+      const img = new Image();
+      img.onload = () => {
+        const ctx = canvas.getContext('2d');
+        const rad = (this.cropRotate * Math.PI) / 180;
+        const is90 = (this.cropRotate / 90) % 2 !== 0;
+        const w = is90 ? img.height : img.width;
+        const h = is90 ? img.width : img.height;
+        
+        const cropX = Math.round(w * (this.cropMargins.left / 100));
+        const cropY = Math.round(h * (this.cropMargins.top / 100));
+        const cropW = Math.max(10, w - cropX - Math.round(w * (this.cropMargins.right / 100)));
+        const cropH = Math.max(10, h - cropY - Math.round(h * (this.cropMargins.bottom / 100)));
+
+        canvas.width = cropW;
+        canvas.height = cropH;
+
+        ctx.save();
+        ctx.translate(cropW / 2 - cropX, cropH / 2 - cropY);
+        ctx.rotate(rad);
+        ctx.drawImage(img, -img.width / 2, -img.height / 2);
+        ctx.restore();
+      };
+      img.src = URL.createObjectURL(file);
+    },
+    applyCrop() {
+      const canvas = this.$refs.cropCanvas;
+      if (!canvas || this.cropTargetIndex == null) return;
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const orig = this.fileList[this.cropTargetIndex];
+        const croppedFile = new File([blob], orig.name || 'cropped.jpg', { type: 'image/jpeg' });
+        const newFiles = Array.from(this.fileList);
+        newFiles[this.cropTargetIndex] = croppedFile;
+        this.fileList = newFiles;
+        this.sourceImages = newFiles.filter(f => (f.type || '').startsWith('image/')).map(f => URL.createObjectURL(f));
+        this.cropperModal = false;
+        this.showToast('Photo cropped & refined');
+      }, 'image/jpeg', 0.92);
+    },
     nearestFood(name) {
       const raw = (name || '').trim(); if (!raw) return '';
       const lc = raw.toLowerCase();
@@ -929,7 +986,7 @@ function mixer() {
 
 // ── helpers ────────────────────────────────────────────────────────────
 function emptyRecipe() { return { name: '', description: '', servings: null, yield: '', image_url: '', tags: [], categories: [], notes: [], source_url: '', ingredients: [] }; }
-function emptyCfg() { return { mealie_url: '', mealie_token: '', ai_key: '', ai_base: '', ai_model: '', ai_rpm: '', auth_user: '', auth_pass: '', api_key: '' }; }
+function emptyCfg() { return { mealie_url: '', mealie_token: '', ai_key: '', ai_base: '', ai_model: '', ai_rules: '', ai_rpm: '', auth_user: '', auth_pass: '', api_key: '' }; }
 function api(path, opts = {}) {
   return fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }, ...opts });
 }

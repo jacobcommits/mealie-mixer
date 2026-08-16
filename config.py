@@ -38,6 +38,7 @@ DEFAULTS = {
     "AI_BASE_URL": "https://generativelanguage.googleapis.com/v1beta/openai/",
     "AI_MODEL": "gemini-3.1-flash-lite",
     "AI_API_KEY": "",
+    "AI_RULES": "",             # household/dietary rules injected into every AI prompt
     "AI_RPM_LIMIT": "",           # cap on AI requests/min (bulk imports); "" or 0 = no limit
     "WHISPER_MODEL": "base",      # faster-whisper model for voice notes (tiny/base/small/medium)
     "MEALIE_URL": "",
