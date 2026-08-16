@@ -24,8 +24,9 @@ Drop in a recipe from **anywhere** — a screenshot, a link, pasted text, a PDF,
 - **🔧 Fix existing recipe** (new in v0.11): read a messy recipe back out of Mealie, run it through the same AI pipeline to clean up ingredients, translate, convert to your chosen units (metric or imperial), and re-structure it. Review and save back onto the same recipe — **update in place**, not a new one. Great for cleaning up scraper-imported recipes with unparsed ingredient strings.
 
 ### Other features
-- **Import history:** a log of what you've imported (with dedupe warnings), and the ability to restore a discarded review.
-- **Installable PWA** — a polished, mobile-first interface that's **fully offline-capable**: all assets and fonts are self-hosted, so the UI makes **no third-party/CDN calls**. **Auto light/dark** (follows your device) and respects reduced-motion settings. Add it to your phone's home screen for a native-app feel.
+- **Multi-user family accounts** (v0.15.0–v0.17.0) — per-user accounts with optional friendly display names (`Dad`, `Mom`), self-service **My Account** password and display-name management, isolated per-user import history, and **persistent 30-day session cookies** so family members stay signed in on mobile devices.
+- **Import history** — a log of what you've imported (with dedupe warnings), and the ability to restore a discarded review.
+- **Installable PWA** — a polished, mobile-first interface featuring a **segmented source switcher tab bar** (Link, Photo, Voice, Text) with visual indicator badges and a **sticky mobile action bar**. **Fully offline-capable**: all assets and fonts are self-hosted, so the UI makes **no third-party/CDN calls**. **Auto light/dark** (follows your device) and respects reduced-motion settings. Add it to your phone's home screen for a native-app feel.
 - **REST API** for external bots/agents (Telegram, etc.).
 - **Voice notes** (opt-in build) — dictate a recipe or upload a screen-recording; local transcription via faster-whisper.
 
