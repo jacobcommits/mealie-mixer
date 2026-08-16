@@ -20,6 +20,7 @@ function mixer() {
     aiTest: { ok: false, msg: '' },
     genKeyMsg: '', cfgMsg: '',
     // recipe input
+    activeTab: 'link',   // link | photo | voice | text
     fileList: null, url: '', pastedText: '', language: 'English', unitsSystem: 'metric', prompt: '',
     recording: false, audioBlob: null, audioUrl: '', recElapsed: 0, audioProgress: 0, jobActive: false,   // voice note (B3) + tab-close resume
     // review
@@ -262,6 +263,13 @@ function mixer() {
     },
 
     // ── recipe flow ─────────────────────────────────────────────────────
+    hasTabSource(t) {
+      if (t === 'link') return !!(this.url || '').trim();
+      if (t === 'photo') return !!(this.fileList && this.fileList.length);
+      if (t === 'voice') return !!this.audioBlob;
+      if (t === 'text') return !!(this.pastedText || '').trim();
+      return false;
+    },
     async extract() {
       this.error = '';
       // Any audio/video → background job (whisper is slow). Everything else combines
