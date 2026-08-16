@@ -182,3 +182,47 @@ def test_fetch_recipes_returns_slug_name():
     assert len(result) == 2
     assert result[0]["name"] == "A Salad"  # sorted
     assert result[1]["slug"] == "z-soup"
+
+
+# ── REST API Endpoint test ─────────────────────────────────────────────
+
+def test_api_restandardize_endpoint():
+    """Verify POST /api/restandardize calls extract_recipes_from_text without signature errors."""
+    from fastapi.testclient import TestClient
+    import app
+
+    client = TestClient(app.fastapi_app)
+
+    mealie_recipe = {
+        "name": "Test Soup",
+        "recipeIngredient": [{"display": "1 onion"}],
+        "recipeInstructions": [{"text": "Chop it."}],
+    }
+    mock_extracted = [{
+        "name": "Structured Soup",
+        "ingredients": [{"food": "onion", "quantity": 1, "unit": None}],
+        "instructions": ["Chop it."],
+        "tags": ["soup"],
+        "categories": ["Main Course"],
+    }]
+
+    with patch("config.is_configured", return_value=True):
+        with patch("config.get", return_value="testkey"):
+            with patch("api.fetch_recipe", return_value=mealie_recipe):
+                with patch("api.fetch_category_names", return_value=["Main Course"]):
+                    with patch("api.fetch_tag_names", return_value=["soup"]):
+                        with patch("api.extract_recipes_from_text", return_value=mock_extracted) as mock_extract:
+                            resp = client.post("/api/restandardize", json={
+                                "slug": "test-soup",
+                                "language": "English",
+                                "units_system": "metric",
+                            }, headers={"X-API-Key": "testkey"})
+
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.json()}"
+    data = resp.json()
+    assert data["recipe"]["name"] == "Structured Soup"
+    assert data["slug"] == "test-soup"
+    mock_extract.assert_called_once()
+    kwargs = mock_extract.call_args.kwargs
+    assert kwargs.get("known_tags") == ["soup"]
+    assert kwargs.get("known_categories") == ["Main Course"]

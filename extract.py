@@ -259,11 +259,15 @@ def extract_recipes(
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
+    known_tags=(),
     units_system: str = "metric",
 ) -> list[dict]:
     """Extract recipe(s) from one or more images."""
     # Multimodal message: the text prompt + every image.
-    content = [{"type": "text", "text": build_user_prompt(target_language, user_note, known_categories=known_categories, units_system=units_system)}]
+    content = [{"type": "text", "text": build_user_prompt(
+        target_language, user_note, known_categories=known_categories,
+        known_tags=known_tags, units_system=units_system
+    )}]
     for p in image_paths:
         content.append({"type": "image_url", "image_url": {"url": image_to_data_url(p)}})
     return _structure(content)
@@ -274,6 +278,7 @@ def extract_recipes_from_text(
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
+    known_tags=(),
     units_system: str = "metric",
 ) -> list[dict]:
     """Extract recipe(s) from pasted raw text — no image, no scrape. The text goes
@@ -282,7 +287,7 @@ def extract_recipes_from_text(
     prompt = build_user_prompt(
         target_language, user_note,
         source="the recipe text below", known_categories=known_categories,
-        units_system=units_system,
+        known_tags=known_tags, units_system=units_system,
     )
     content = [{"type": "text", "text": f"{prompt}\n\n--- RECIPE TEXT ---\n{text}"}]
     return _structure(content)
@@ -364,6 +369,7 @@ def extract_recipes_from_audio(
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
+    known_tags=(),
     units_system: str = "metric",
     progress=None,
 ) -> list[dict]:
@@ -380,7 +386,7 @@ def extract_recipes_from_audio(
         )
     return extract_recipes_from_text(
         text, user_note=user_note, target_language=target_language,
-        known_categories=known_categories, units_system=units_system,
+        known_categories=known_categories, known_tags=known_tags, units_system=units_system,
     )
 
 
@@ -569,6 +575,7 @@ def extract_recipes_from_video(
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
+    known_tags=(),
     units_system: str = "metric",
 ) -> list[dict]:
     """Extract a recipe from a social VIDEO post (TikTok / Reel / Short / FB).
@@ -601,7 +608,7 @@ def extract_recipes_from_video(
     prompt = build_user_prompt(
         target_language, user_note,
         source="the social-media post text below", known_categories=known_categories,
-        units_system=units_system,
+        known_tags=known_tags, units_system=units_system,
     )
     content = [{"type": "text", "text": f"{prompt}\n\n--- POST TEXT ---\n{source_text}"}]
     recipes = _structure(content)
