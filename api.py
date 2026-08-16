@@ -16,7 +16,6 @@ Typed contract via Pydantic — gives auto /docs (interactive OpenAPI) for free.
 
 from __future__ import annotations
 
-import asyncio
 import hmac
 import os
 import tempfile
@@ -46,7 +45,6 @@ from push import (
     fetch_recipe,
     fetch_recipe_names,
     fetch_recipes,
-    fetch_tag_names,
     push_recipe,
     recipe_to_text,
     test_mealie,
@@ -211,7 +209,6 @@ class ConfigBody(BaseModel):
     auth_pass: str = ""
     api_key: str = ""
     ai_rpm: str = ""
-    ai_rules: str = ""
 
 
 class UserCreateBody(BaseModel):
@@ -277,6 +274,8 @@ async def api_extract(
     tmp_paths: list[str] = []
     try:
         image_paths, doc_texts, audio_path = await _collect_sources(files, audio, tmp_paths)
+        # extract_recipes_from_sources does blocking LLM + httpx work — run it in the
+        # threadpool so a slow extract doesn't stall the server for everyone else.
         recipes = await run_in_threadpool(
             extract_recipes_from_sources,
             image_paths=image_paths,
@@ -417,13 +416,6 @@ def api_extract_job_status(request: Request, job_id: str):
     return job
 
 
-@router.delete("/extract/job/{job_id}", dependencies=[Depends(require_access)])
-def api_delete_extract_job(request: Request, job_id: str):
-    """Cancel / delete a background extraction job."""
-    jobs.delete_job(job_id, user=_effective_user(request))
-    return {"status": "cancelled"}
-
-
 @router.post(
     "/push",
     response_model=PushResponse,
@@ -516,7 +508,6 @@ def api_get_config(request: Request):
             "ai_base_url": config.get("AI_BASE_URL"),
             "ai_model": config.get("AI_MODEL"),
             "ai_rpm": config.get("AI_RPM_LIMIT"),
-            "ai_rules": config.get("AI_RULES"),
             "auth_user": config.get("MIXER_AUTH_USER"),
             "has_mealie_token": bool(config.get("MEALIE_TOKEN")),
             "has_ai_key": bool(config.get("AI_API_KEY")),
@@ -533,7 +524,7 @@ def api_set_config(body: ConfigBody):
             mealie_url=body.mealie_url, mealie_token=body.mealie_token,
             ai_key=body.ai_key, ai_base=body.ai_base, ai_model=body.ai_model,
             auth_user=body.auth_user, auth_pass=body.auth_pass, api_key=body.api_key,
-            ai_rpm=body.ai_rpm, ai_rules=body.ai_rules,
+            ai_rpm=body.ai_rpm,
         )
     except core.ConfigError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -675,12 +666,6 @@ def api_categories():
     return {"categories": fetch_category_names()}
 
 
-@router.get("/tags", dependencies=[Depends(require_access)])
-def api_tags():
-    """Tag names for the review-step autocomplete (session or key auth)."""
-    return {"tags": fetch_tag_names()}
-
-
 @router.get("/recipe-names", dependencies=[Depends(require_access)])
 def api_recipe_names():
     """Existing recipe names for the review-step duplicate warning."""
@@ -724,15 +709,11 @@ def api_restandardize(body: RestandardizeBody):
         known_categories = fetch_category_names()
     except Exception:
         known_categories = []
-    try:
-        known_tags = fetch_tag_names()
-    except Exception:
-        known_tags = []
 
     try:
         recipes = extract_recipes_from_text(
             text, target_language=body.language, known_categories=known_categories,
-            known_tags=known_tags, units_system=body.units_system,
+            units_system=body.units_system,
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AI structuring failed: {str(e)[:300]}")

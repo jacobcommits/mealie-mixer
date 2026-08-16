@@ -8,8 +8,8 @@
   <link rel="icon" type="image/png" href="/icons/favicon.png" />
   <link rel="apple-touch-icon" href="/icons/icon-180.png" />
   <title>Mealie Mixer</title>
-  <link rel="stylesheet" href="/style.css?v=0.24.1" />
-  <script defer src="/app.js?v=0.24.1"></script>
+  <link rel="stylesheet" href="/style.css" />
+  <script defer src="/app.js"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -80,10 +80,6 @@
         <button class="btn ghost sm" @click="testAi()">Test AI (≈1 token)</button>
         <small :class="aiTest.ok ? 'ok' : 'err'" x-text="aiTest.msg"></small>
 
-        <h3>Personalized AI Rules &amp; Household Preferences</h3>
-        <textarea class="input" rows="3" placeholder="e.g. 'Always replace butter with olive oil. Default to Polish. Add Air Fryer tag if air-frying is mentioned.'" x-model="cfg.ai_rules"></textarea>
-        <small class="muted small">Persistent household rules automatically included in every recipe extraction call.</small>
-
         <h3>Login (Optional)</h3>
         <input class="input" type="text" placeholder="Username (leave blank for no login)" x-model="cfg.auth_user" />
         <input class="input" type="password" placeholder="Password (leave blank to keep current)" x-model="cfg.auth_pass" />
@@ -124,60 +120,33 @@
         <p class="muted small">Add one source or several — a link, recipe images, text, or a voice/video recording — and we'll merge them into one clean recipe.</p>
         <p class="muted small">📚 Importing a whole cookbook? <button type="button" class="linkbtn" @click="openCookbook()">Use Cookbook import</button> in the menu for much better results.</p>
         
-        <!-- Segmented Tab Switcher -->
-        <div class="tabs-bar">
-          <button type="button" class="tab-btn" :class="{ active: activeTab === 'link' }" @click="activeTab = 'link'">
+        <label class="filezone">
+          <input type="file" accept="image/*,.pdf,.md,.markdown,.txt,.eml" multiple
+                 @change="fileList = $event.target.files" />
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" x2="12" y1="3" y2="15"></line></svg>
+          <span x-text="fileList && fileList.length
+                  ? (fileList.length + ' file(s) selected')
+                  : 'Drop recipe screenshot(s), photos, or documents here'"></span>
+        </label>
+        
+        <div class="or">and / or</div>
+        
+        <div style="position: relative; display: flex; align-items: center;">
+          <span style="position: absolute; left: 14px; color: var(--muted-dark);">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-            <span>Link URL</span>
-            <span class="tab-badge" x-show="hasTabSource('link')"></span>
-          </button>
-
-          <button type="button" class="tab-btn" :class="{ active: activeTab === 'photo' }" @click="activeTab = 'photo'">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" x2="12" y1="3" y2="15"></line></svg>
-            <span>Photo / File</span>
-            <span class="tab-badge" x-show="hasTabSource('photo')"></span>
-          </button>
-
-          <button type="button" class="tab-btn" x-show="cfgInfo.voice" :class="{ active: activeTab === 'voice' }" @click="activeTab = 'voice'">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
-            <span>Voice / Video</span>
-            <span class="tab-badge" x-show="hasTabSource('voice')"></span>
-          </button>
-
-          <button type="button" class="tab-btn" :class="{ active: activeTab === 'text' }" @click="activeTab = 'text'">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-            <span>Pasted Text</span>
-            <span class="tab-badge" x-show="hasTabSource('text')"></span>
-          </button>
+          </span>
+          <input class="input" type="url" placeholder="Paste a recipe link" x-model="url" style="padding-left: 42px;" />
         </div>
-
-        <!-- Tab 1: Link URL -->
-        <div x-show="activeTab === 'link'" class="fade-in">
-          <div style="position: relative; display: flex; align-items: center;">
-            <span style="position: absolute; left: 14px; color: var(--muted-dark);">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-            </span>
-            <input class="input" type="url" placeholder="Paste a recipe URL (Instagram, TikTok, website...)" x-model="url" style="padding-left: 42px;" />
-          </div>
-          <small class="warn" x-show="importedNote()" x-text="importedNote()"></small>
-          <small class="muted small" x-show="socialUrl()">ℹ We'll read the post's caption. If instructions are only spoken, switch to the Voice / Video tab to attach a recording.</small>
-        </div>
-
-        <!-- Tab 2: Photo / File -->
-        <div x-show="activeTab === 'photo'" class="fade-in">
-          <label class="filezone">
-            <input type="file" accept="image/*,.pdf,.md,.markdown,.txt,.eml" multiple
-                   @change="fileList = $event.target.files" />
-            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" x2="12" y1="3" y2="15"></line></svg>
-            <span x-text="fileList && fileList.length
-                    ? (fileList.length + ' file(s) selected')
-                    : 'Drop recipe screenshot(s), photos, or documents here'"></span>
-          </label>
-        </div>
-
-        <!-- Tab 3: Voice / Video -->
-        <div x-show="activeTab === 'voice' && cfgInfo.voice" class="fade-in">
+        <small class="warn" x-show="importedNote()" x-text="importedNote()"></small>
+        <small class="muted small" x-show="socialUrl()">ℹ We'll read the post's caption. If instructions are only spoken, record or upload a video clip below.</small>
+        
+        <div class="or">and / or</div>
+        
+        <textarea class="input" rows="4" placeholder="Paste raw recipe text" x-model="pastedText"></textarea>
+        
+        <template x-if="cfgInfo.voice">
           <div class="voicebox">
+            <div class="or">and / or</div>
             <div class="row" style="align-items: center; gap: 14px;">
               <button type="button" class="btn ghost" :class="{ recpulse: recording }" @click="toggleRecord()" style="flex: none;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
@@ -201,12 +170,7 @@
             </div>
             <small class="muted small">Dictate steps aloud or upload a screen-recording. We'll transcribe the audio and pair it with any caption/ingredients.</small>
           </div>
-        </div>
-
-        <!-- Tab 4: Pasted Text -->
-        <div x-show="activeTab === 'text'" class="fade-in">
-          <textarea class="input" rows="5" placeholder="Paste raw recipe text or ingredients..." x-model="pastedText"></textarea>
-        </div>
+        </template>
         
         <div class="row">
           <div class="field">
@@ -247,17 +211,14 @@
             <h2>Source Image</h2>
             <p class="muted small">Original dish photo and source screenshots context.</p>
             <img class="hero" x-show="photoPreview || recipe.image_url" :src="photoPreview || recipe.image_url" alt="" style="max-height: 340px; object-fit: contain; background: #000;" />
-            <div class="photorow" style="display: flex; gap: 6px; flex-wrap: wrap;">
-              <label class="photopick" style="flex: 1; min-width: 140px;">
+            <div class="photorow">
+              <label class="photopick">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
                 <input type="file" accept="image/*" @change="pickPhoto($event)" />
-                <span x-text="(photoFile || recipe.image_url) ? 'Change photo' : 'Add photo'"></span>
+                <span x-text="(photoFile || recipe.image_url) ? 'Tap to change the recipe photo' : 'Add recipe photo (optional)'"></span>
               </label>
-              <button type="button" class="btn ghost sm" x-show="photoPreview || recipe.image_url" @click="openCrop(photoPreview || recipe.image_url)">
-                ✂ Crop / Rotate
-              </button>
               <button class="x" x-show="photoFile || recipe.image_url" @click="removePhoto()" title="remove photo" aria-label="Remove photo">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
               </button>
             </div>
             <small class="warn" x-show="autoPhotoWarn()">⚠ Thumbnail grabbed automatically from post — remove if it's not the dish.</small>
@@ -323,42 +284,7 @@
               </div>
             </div>
 
-            <h3>Tags</h3>
-            <div class="chips">
-              <template x-for="(t, i) in recipe.tags" :key="i">
-                <span class="chip">
-                  <span x-text="t"></span>
-                  <button class="cx" @click="removeTag(i)" title="remove" aria-label="Remove tag">✕</button>
-                </span>
-              </template>
-            </div>
-            
-            <!-- Tag Autocomplete Custom Combobox -->
-            <div class="combobox-wrapper" x-data="{ open: false, activeIndex: -1 }" @click.away="open = false">
-              <input class="input" type="text" placeholder="Type tag to add (e.g. Quick, Air Fryer)…"
-                     x-model="tagInput"
-                     @focus="open = true; activeIndex = -1"
-                     @keydown.escape="open = false"
-                     @keydown.arrow-down.prevent="open = true; activeIndex = Math.min(activeIndex + 1, filteredTags(tagInput).length - 1)"
-                     @keydown.arrow-up.prevent="activeIndex = Math.max(activeIndex - 1, -1)"
-                     @keydown.enter.prevent="if (activeIndex >= 0) { tagInput = filteredTags(tagInput)[activeIndex]; } addTag(); open = false;" />
-              
-              <div class="combobox-options" x-show="open && filteredTags(tagInput).length" x-cloak>
-                <template x-for="(t, idx) in filteredTags(tagInput)" :key="t">
-                  <div class="combobox-option"
-                       :class="{ 'active': activeIndex === idx }"
-                       @click="tagInput = t; addTag(); open = false;"
-                       x-text="t"></div>
-                </template>
-              </div>
-            </div>
-
-            <div class="section-hdr">
-              <h3>Ingredients</h3>
-              <button type="button" class="btn ghost sm" @click="openFoodPicker()" title="Browse all Mealie foods">
-                🔍 Browse Database
-              </button>
-            </div>
+            <h3>Ingredients</h3>
             <div class="ings">
               <template x-for="(ing, i) in recipe.ingredients" :key="i">
                 <div class="ingwrap">
@@ -367,48 +293,25 @@
                   
                   <div class="ing">
                     <input class="input qty" placeholder="qty" x-model="ing.quantity" />
-                    
-                    <!-- Unit Autocomplete Custom Combobox -->
-                    <div class="combobox-wrapper unit-combobox" x-data="{ open: false, activeIndex: -1 }" @click.away="open = false">
-                      <input class="input unit" placeholder="unit" x-model="ing.unit"
-                             @focus="open = true; activeIndex = -1"
-                             @keydown.escape="open = false"
-                             @keydown.arrow-down.prevent="open = true; activeIndex = Math.min(activeIndex + 1, filteredUnits(ing.unit).length - 1)"
-                             @keydown.arrow-up.prevent="activeIndex = Math.max(activeIndex - 1, -1)"
-                             @keydown.enter.prevent="if (activeIndex >= 0) { ing.unit = filteredUnits(ing.unit)[activeIndex]; } open = false;" />
-                      
-                      <div class="combobox-options" x-show="open && filteredUnits(ing.unit).length" x-cloak>
-                        <template x-for="(u, idx) in filteredUnits(ing.unit)" :key="u">
-                          <div class="combobox-option"
-                               :class="{ 'active': activeIndex === idx }"
-                               @click="ing.unit = u; open = false;"
-                               x-text="u"></div>
-                        </template>
-                      </div>
-                    </div>
+                    <input class="input unit" placeholder="unit" x-model="ing.unit" />
                     
                     <!-- Food Autocomplete Custom Combobox -->
-                    <div class="combobox-wrapper food-combobox" x-data="{ open: false, activeIndex: -1 }" @click.away="open = false">
-                      <div class="food-input-group">
-                        <input class="input food" placeholder="food name" x-model="ing.food"
-                               @focus="open = true; activeIndex = -1"
-                               @keydown.escape="open = false"
-                               @keydown.arrow-down.prevent="open = true; activeIndex = Math.min(activeIndex + 1, filteredFoods(ing.food).length - 1)"
-                               @keydown.arrow-up.prevent="activeIndex = Math.max(activeIndex - 1, -1)"
-                               @keydown.enter.prevent="if (activeIndex >= 0) { ing.food = filteredFoods(ing.food)[activeIndex].name; } open = false;"
-                               :class="ing.food && ing.food.trim() ? 'fs-' + foodStatus(ing.food) : ''"
-                               :title="{exists:'Matched in Mealie',near:'Near-match in Mealie',new:'New food — will be created'}[foodStatus(ing.food)] || ''" />
-                        <button type="button" class="food-search-btn" @click="openFoodPicker(ing)" title="Search Mealie foods for this row">🔍</button>
-                      </div>
+                    <div class="combobox-wrapper" x-data="{ open: false, activeIndex: -1 }" @click.away="open = false">
+                      <input class="input food" placeholder="food name" x-model="ing.food"
+                             @focus="open = true; activeIndex = -1"
+                             @keydown.escape="open = false"
+                             @keydown.arrow-down.prevent="open = true; activeIndex = Math.min(activeIndex + 1, filteredFoods(ing.food).length - 1)"
+                             @keydown.arrow-up.prevent="activeIndex = Math.max(activeIndex - 1, -1)"
+                             @keydown.enter.prevent="if (activeIndex >= 0) { ing.food = filteredFoods(ing.food)[activeIndex]; } open = false;"
+                             :class="ing.food && ing.food.trim() ? 'fs-' + foodStatus(ing.food) : ''"
+                             :title="{exists:'Matched in Mealie',near:'Near-match in Mealie',new:'New food — will be created'}[foodStatus(ing.food)] || ''" />
                       
                       <div class="combobox-options" x-show="open && filteredFoods(ing.food).length" x-cloak>
-                        <template x-for="(f, idx) in filteredFoods(ing.food)" :key="f.name">
-                          <div class="combobox-option combobox-option-badge"
+                        <template x-for="(f, idx) in filteredFoods(ing.food)" :key="f">
+                          <div class="combobox-option"
                                :class="{ 'active': activeIndex === idx }"
-                               @click="ing.food = f.name; open = false;">
-                            <span x-text="f.name"></span>
-                            <span class="cb-badge cb-badge-exists">In Mealie</span>
-                          </div>
+                               @click="ing.food = f; open = false;"
+                               x-text="f"></div>
                         </template>
                       </div>
                     </div>
@@ -431,10 +334,9 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                       </button>
                     </div>
-                    <button class="match-pill" type="button" x-show="nearestFood(ing.food)"
-                            @click="ing.food = nearestFood(ing.food)">
-                      <span class="match-icon">↳</span> Use Mealie food: <strong x-text="'&quot;' + nearestFood(ing.food) + '&quot;'"></strong>
-                    </button>
+                    <button class="foodhint" type="button" x-show="nearestFood(ing.food)"
+                            @click="ing.food = nearestFood(ing.food)"
+                            x-text="'↳ Matched food: ' + nearestFood(ing.food) + '?'"></button>
                     <button class="foodhint" type="button" x-show="!ing.title"
                             @click="ing.title = 'Section'">§ Section heading</button>
                   </div>
@@ -469,19 +371,7 @@
 
             <small class="warn" x-show="updateMode">⚠ Saving changes will overwrite the existing recipe directly in Mealie.</small>
             <p class="err" x-show="error" x-text="error"></p>
-
-            <div class="row" style="margin-top: 14px;">
-              <button class="btn primary" :disabled="loading" @click="push()" x-text="updateMode ? 'Save Changes' : (queue.length ? ('Save & Next (' + queue.length + ' left)') : 'Save to Mealie')"></button>
-              <button class="btn ghost" x-show="hasSources() && !updateMode" @click="reExtract()">Tweak Prompt</button>
-              <button class="btn ghost" @click="discard()" x-text="queue.length ? 'Skip recipe' : 'Discard'"></button>
-            </div>
           </div>
-        </div>
-
-        <!-- Sticky Mobile Action Bar -->
-        <div class="actionbar" x-show="view === 'review'">
-          <button class="btn ghost sm" @click="discard()" x-text="queue.length ? 'Skip' : 'Discard'"></button>
-          <button class="btn primary" :disabled="loading" @click="push()" x-text="updateMode ? 'Save Changes' : (queue.length ? ('Save & Next (' + queue.length + ')') : 'Save to Mealie')"></button>
         </div>
 
       </div>
@@ -842,24 +732,11 @@
 
   <div class="overlay" x-show="loading" x-transition.opacity x-cloak>
     <div class="spinner big"></div>
-    <p x-text="loadingMsg" style="font-weight:600; margin-top: 0.5rem;"></p>
+    <p x-text="loadingMsg"></p>
     <div class="cbbar" x-show="audioProgress > 0" x-cloak style="max-width:240px">
       <div class="cbbar-fill" :style="'width:' + Math.round(audioProgress * 100) + '%'"></div>
     </div>
-
-    <!-- Real-time Live Log Console -->
-    <div class="extract-log-box" x-show="extractLogs &amp;&amp; extractLogs.length" x-cloak>
-      <div class="extract-log-header">
-        <span>⚡ Live Execution Log</span>
-      </div>
-      <div class="extract-log-terminal" x-ref="logTerminal">
-        <template x-for="(log, idx) in extractLogs" :key="idx">
-          <div class="log-line" x-text="log" :class="log.includes('❌') ? 'log-err' : (log.includes('✨') || log.includes('✅') ? 'log-success' : '')"></div>
-        </template>
-      </div>
-    </div>
-
-    <button class="btn ghost sm" x-show="loading" x-cloak @click="cancelExtract()" style="margin-top:1rem">Cancel</button>
+    <button class="btn ghost sm" x-show="jobActive" x-cloak @click="cancelExtractJob()" style="margin-top:1rem">Cancel</button>
   </div>
   
   <div class="toast" x-show="toast" x-text="toast" x-transition></div>
@@ -875,80 +752,6 @@
       <div class="row">
         <button class="btn ghost" @click="cancelDup()">Cancel</button>
         <button class="btn primary" @click="confirmDup()">Push anyway</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Food Database Picker Modal -->
-  <div class="modal" x-show="foodPickerModal" @click.self="foodPickerModal = false" x-transition.opacity x-cloak>
-    <div class="modalbox picker-box">
-      <div class="picker-hdr">
-        <h2>🔍 Mealie Food Database</h2>
-        <button type="button" class="x" @click="foodPickerModal = false">✕</button>
-      </div>
-      <p class="picker-desc">Search your Mealie food database and click any item to select it for your recipe.</p>
-      <input class="input picker-search" type="text" placeholder="Type to filter foods…" x-model="foodPickerSearch" autofocus />
-      
-      <div class="picker-list">
-        <template x-for="f in filteredPickerFoods()" :key="f">
-          <button type="button" class="picker-item" @click="selectPickerFood(f)">
-            <span class="picker-name" x-text="f"></span>
-            <span class="cb-badge cb-badge-exists">In Mealie</span>
-          </button>
-        </template>
-        <div class="picker-empty" x-show="!filteredPickerFoods().length">
-          No foods matching "<span x-text="foodPickerSearch"></span>" found in Mealie.
-        </div>
-      </div>
-
-      <div class="row" style="margin-top: 14px; justify-content: flex-end;">
-        <button class="btn ghost sm" @click="foodPickerModal = false">Close</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Image Cropper & Refinement Modal (v0.21.0) -->
-  <div class="modal" x-show="cropModal" @click.self="cropModal = false" x-transition.opacity x-cloak>
-    <div class="modalbox cropper-box">
-      <div class="picker-hdr">
-        <h2>✂ Crop &amp; Rotate Photo</h2>
-        <button type="button" class="x" @click="cropModal = false">✕</button>
-      </div>
-      <p class="picker-desc">Rotate or trim margins to focus on the dish photo.</p>
-
-      <div class="cropper-viewport">
-        <canvas x-ref="cropCanvas" class="crop-canvas"></canvas>
-      </div>
-
-      <div class="cropper-controls">
-        <div class="row" style="gap: 8px; margin-bottom: 10px;">
-          <button type="button" class="btn ghost sm" @click="rotateCrop()">🔄 Rotate 90°</button>
-          <button type="button" class="btn ghost sm" @click="resetCrop()">↺ Reset</button>
-        </div>
-
-        <div class="cropper-sliders">
-          <div class="slider-group">
-            <span class="muted small">Top Trim: <strong x-text="cropMargins.top + '%'"></strong></span>
-            <input type="range" min="0" max="45" x-model.number="cropMargins.top" />
-          </div>
-          <div class="slider-group">
-            <span class="muted small">Bottom Trim: <strong x-text="cropMargins.bottom + '%'"></strong></span>
-            <input type="range" min="0" max="45" x-model.number="cropMargins.bottom" />
-          </div>
-          <div class="slider-group">
-            <span class="muted small">Left Trim: <strong x-text="cropMargins.left + '%'"></strong></span>
-            <input type="range" min="0" max="45" x-model.number="cropMargins.left" />
-          </div>
-          <div class="slider-group">
-            <span class="muted small">Right Trim: <strong x-text="cropMargins.right + '%'"></strong></span>
-            <input type="range" min="0" max="45" x-model.number="cropMargins.right" />
-          </div>
-        </div>
-      </div>
-
-      <div class="row" style="margin-top: 14px; justify-content: flex-end; gap: 8px;">
-        <button class="btn ghost sm" @click="cropModal = false">Cancel</button>
-        <button class="btn primary sm" @click="applyCrop()">Apply Crop</button>
       </div>
     </div>
   </div>

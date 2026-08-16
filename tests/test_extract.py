@@ -88,13 +88,3 @@ def test_from_sources_combines_caption_transcript_and_image(monkeypatch):
 def test_from_sources_requires_at_least_one_source():
     with pytest.raises(ValueError):
         extract.extract_recipes_from_sources()
-
-
-def test_build_user_prompt_includes_ai_rules():
-    prompt = extract.build_user_prompt(
-        target_language="English",
-        user_note="no onions",
-        ai_rules="Always substitute butter with olive oil. Default to Polish."
-    )
-    assert "Household & dietary rules (ALWAYS follow these): Always substitute butter with olive oil. Default to Polish." in prompt
-    assert "Extra instructions from the user: no onions" in prompt

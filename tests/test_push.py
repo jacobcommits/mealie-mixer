@@ -47,21 +47,6 @@ def test_clean_category():
     assert cleaned == {"id": "cat-123", "name": "Dinner", "slug": "dinner"}
 
 
-def test_clean_tag():
-    """_clean_tag strips internal/read-only fields, keeping only id, name, slug."""
-    raw = {
-        "id": "tag-123",
-        "name": "Quick",
-        "slug": "quick",
-        "createdAt": "2026-01-01",
-        "updatedAt": "2026-01-02",
-        "userId": "user-456",
-        "recipes": ["r1"],
-    }
-    cleaned = push._clean_tag(raw)
-    assert cleaned == {"id": "tag-123", "name": "Quick", "slug": "quick"}
-
-
 def test_format_mealie_error():
     """_format_mealie_error formats HTTPStatusError with status code and response body."""
     request = httpx.Request("POST", "http://localhost/api/recipes")
@@ -74,8 +59,8 @@ def test_format_mealie_error():
     assert '{"detail":"Invalid payload"}' in str(formatted)
 
 
-def test_patch_fields_sanitizes_categories_and_tags():
-    """_patch_fields resolves categories & tags and sends clean category & tag dicts."""
+def test_patch_fields_sanitizes_categories():
+    """_patch_fields resolves categories and sends clean category dicts."""
     client = MagicMock()
 
     # Mock responses for _load_lookup and _resolve
@@ -92,31 +77,10 @@ def test_patch_fields_sanitizes_categories_and_tags():
         ]
     }
     mock_resp.raise_for_status = MagicMock()
-
-    tag_resp = MagicMock()
-    tag_resp.json.return_value = {
-        "items": [
-            {
-                "id": "t1",
-                "name": "Quick",
-                "slug": "quick",
-                "recipes": ["r1"],
-                "createdAt": "2026-01-01",
-            }
-        ]
-    }
-    tag_resp.raise_for_status = MagicMock()
-
-    # Handle client.get calls for /api/organizers/categories vs /api/organizers/tags
-    def get_side_effect(url, **kwargs):
-        if "tags" in url:
-            return tag_resp
-        return mock_resp
-
-    client.get.side_effect = get_side_effect
+    client.get.return_value = mock_resp
     client.patch.return_value = mock_resp
 
-    recipe = {"categories": ["Main Course"], "tags": ["Quick"]}
+    recipe = {"categories": ["Main Course"]}
     push._patch_fields(client, "test-slug", recipe)
 
     # Verify PATCH for recipeCategory carried cleaned category object without extra fields
@@ -124,28 +88,19 @@ def test_patch_fields_sanitizes_categories_and_tags():
         "/api/recipes/test-slug",
         json={"recipeCategory": [{"id": "c1", "name": "Main Course", "slug": "main-course"}]},
     )
-    # Verify PATCH for tags carried cleaned tag object without extra fields
-    client.patch.assert_any_call(
-        "/api/recipes/test-slug",
-        json={"tags": [{"id": "t1", "name": "Quick", "slug": "quick"}]},
-    )
 
 
-def test_patch_fields_clears_categories_and_tags_when_empty():
-    """When recipe dict has categories: [], tags: [], _patch_fields sends recipeCategory: [], tags: []."""
+def test_patch_fields_clears_categories_when_empty():
+    """When recipe dict has categories: [], _patch_fields sends recipeCategory: []."""
     client = MagicMock()
     mock_resp = MagicMock()
     mock_resp.raise_for_status = MagicMock()
     client.patch.return_value = mock_resp
 
-    recipe = {"categories": [], "tags": []}
+    recipe = {"categories": []}
     push._patch_fields(client, "test-slug", recipe)
 
-    client.patch.assert_any_call(
+    client.patch.assert_called_once_with(
         "/api/recipes/test-slug",
         json={"recipeCategory": []},
-    )
-    client.patch.assert_any_call(
-        "/api/recipes/test-slug",
-        json={"tags": []},
     )

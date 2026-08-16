@@ -132,19 +132,6 @@ def get_job(job_id: str, user: str | None = None) -> dict | None:
     return snap
 
 
-def delete_job(job_id: str, user: str | None = None) -> bool:
-    """Delete a job from memory and storage."""
-    with _LOCK:
-        job = JOBS.pop(job_id, None)
-    try:
-        p = os.path.join(_jobs_dir(), f"job-{job_id}.json")
-        if os.path.exists(p):
-            os.remove(p)
-    except OSError:
-        pass
-    return bool(job)
-
-
 def list_jobs(limit: int = 10, user: str | None = None) -> list[dict]:
     """Recent job summaries (no recipe payloads), newest first — disk ∪ memory. When
     `user` is given, only that user's jobs are listed (legacy ownerless jobs included)."""
@@ -172,7 +159,7 @@ def list_jobs(limit: int = 10, user: str | None = None) -> list[dict]:
 # the browser polls get_job(), rather than blocking the /api/extract request. `sources` is
 # a dict {image_paths, url, text, doc_texts, audio_path, _tmp_paths}.
 
-def _extract_sources_default(sources, user_note, language, known_categories, units_system, progress, log=None):
+def _extract_sources_default(sources, user_note, language, known_categories, units_system, progress):
     from extract import extract_recipes_from_sources
     return extract_recipes_from_sources(
         image_paths=sources.get("image_paths", []),
@@ -182,7 +169,7 @@ def _extract_sources_default(sources, user_note, language, known_categories, uni
         audio_path=sources.get("audio_path", ""),
         user_note=user_note, target_language=language,
         known_categories=known_categories, units_system=units_system,
-        progress=progress, log=log,
+        progress=progress,
     )
 
 
@@ -190,15 +177,8 @@ def _process_extract_job(job, sources, language, user_note, known_categories, un
                          extract_fn=None) -> dict:
     """Combine the given sources into recipe(s). Mutates `job` in place (status/phase/progress)
     and always removes the temp upload files in `sources['_tmp_paths']`. `extract_fn(sources,
-    note, lang, cats, progress, log)` is injectable for tests."""
+    note, lang, cats, progress)` is injectable for tests."""
     extract_fn = extract_fn or _extract_sources_default
-
-    def log(msg: str):
-        from datetime import datetime
-        t = datetime.now().strftime("%H:%M:%S")
-        entry = f"[{t}] {msg}"
-        with _LOCK:
-            job.setdefault("logs", []).append(entry)
 
     def on_progress(frac):
         with _LOCK:
@@ -207,10 +187,7 @@ def _process_extract_job(job, sources, language, user_note, known_categories, un
                 job["phase"] = "transcribing" if frac < 0.999 else "structuring"
 
     try:
-        try:
-            recs = extract_fn(sources, user_note, language, known_categories, units_system, on_progress, log=log) or []
-        except TypeError:
-            recs = extract_fn(sources, user_note, language, known_categories, units_system, on_progress) or []
+        recs = extract_fn(sources, user_note, language, known_categories, units_system, on_progress) or []
         with _LOCK:
             for rec in recs:
                 job["recipes"].append({"recipe": rec, "image": rec.get("image_url")})
@@ -219,7 +196,6 @@ def _process_extract_job(job, sources, language, user_note, known_categories, un
             job["phase"] = "done"
             job["status"] = "done"
     except Exception as e:
-        log(f"❌ Job failed: {str(e)}")
         with _LOCK:
             job["status"] = "error"
             job["failed"] = 1

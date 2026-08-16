@@ -25,8 +25,6 @@ import time
 from openai import OpenAI
 from PIL import Image
 
-import httpx
-
 import config
 
 # Backend is swappable via the config layer: AI_BASE_URL / AI_MODEL can point at
@@ -50,32 +48,13 @@ SYSTEM_PROMPT = (
 )
 
 
-def build_user_prompt(
-    target_language: str,
-    user_note: str,
-    source: str = "the image(s)",
-    known_categories=(),
-    known_tags=(),
-    units_system: str = "metric",
-    ai_rules: str | None = None,
-) -> str:
+def build_user_prompt(target_language: str, user_note: str, source: str = "the image(s)", known_categories=(), units_system: str = "metric") -> str:
     extra = f"\n\nExtra instructions from the user: {user_note}" if user_note.strip() else ""
     cat_rule = (
         "\n- For \"categories\", PREFER an existing category from this list when one "
         f"fits: {', '.join(known_categories)}. Only invent a new category name if "
         "none of them fit."
         if known_categories else ""
-    )
-    tag_rule = (
-        "\n- For \"tags\", PREFER an existing tag from this list when one "
-        f"fits: {', '.join(known_tags)}. Only invent a new tag name if "
-        "none of them fit."
-        if known_tags else ""
-    )
-    active_ai_rules = ai_rules if ai_rules is not None else config.get("AI_RULES", "")
-    preset_rule = (
-        f"\n- Household & dietary rules (ALWAYS follow these): {active_ai_rules.strip()}"
-        if active_ai_rules and active_ai_rules.strip() else ""
     )
     if units_system.lower() == "imperial":
         units_rule = "- Convert amounts measured by weight or volume to Imperial/US customary units (ounces, pounds, cups, fluid ounces). Convert temperatures to Fahrenheit. Keep tbsp/tsp/pinch as-is."
@@ -116,7 +95,7 @@ Rules:
 - NEVER merge two different foods into one ingredient (e.g. "salt and pepper", "oil or lard" is fine as alternatives but "salt and pepper" is two foods). Emit a separate ingredient for each, even if they share an amount or are both "to taste".
 - If there is no clear amount (e.g. "salt to taste"), set quantity to null and put the descriptor in "note".
 - For a range like "1.2 to 1.4 kg", pick the higher number and note the range.
-- Do NOT invent anything not shown in the source.{cat_rule}{tag_rule}{preset_rule}{extra}
+- Do NOT invent anything not shown in the source.{cat_rule}{extra}
 
 Respond with ONLY a JSON object in exactly this shape — no markdown, no commentary:
 {{"recipes": [{{"name": "...", "description": "...", "servings": 4, "yield": "4 servings", "ingredients": [{{"quantity": 1.4, "unit": "kg", "food": "ground beef", "note": "80/20", "title": "For the sauce"}}, {{"quantity": 2, "unit": null, "food": "egg", "note": null, "title": null}}, {{"quantity": 2, "unit": "clove", "food": "garlic", "note": null, "title": null}}], "instructions": ["..."], "tags": ["..."], "categories": ["Main Course"], "notes": [{{"title": "Storage", "text": "Keeps 3 days in the fridge."}}]}}]}}"""
@@ -201,7 +180,7 @@ def _call_with_retry(make_call):
     raise RuntimeError("AI call failed after retries")  # defensive — unreachable
 
 
-def _structure(content: list, log=None) -> list[dict]:
+def _structure(content: list) -> list[dict]:
     """Send a user-content payload (text prompt + images, or just text) to the
     LLM and return normalised structured recipes. Shared by every input path —
     same single call, same JSON shape out, regardless of input."""
@@ -209,18 +188,12 @@ def _structure(content: list, log=None) -> list[dict]:
     if not api_key:
         raise RuntimeError("AI_API_KEY is not set — configure it in the setup page or .env.")
 
-    base_url = config.get("AI_BASE_URL")
-    model = config.get("AI_MODEL")
-    if log:
-        try: log(f"🤖 Connecting to AI Provider ({model} @ {base_url[:35]}...)")
-        except Exception: pass
-
-    client = OpenAI(base_url=base_url, api_key=api_key, timeout=45.0)
+    client = OpenAI(base_url=config.get("AI_BASE_URL"), api_key=api_key)
     _rpm_wait()   # honour the configured AI requests/min cap (bulk imports)
 
     def make_call(use_json: bool):
         kwargs = {
-            "model": model,
+            "model": config.get("AI_MODEL"),
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": content},
@@ -228,29 +201,15 @@ def _structure(content: list, log=None) -> list[dict]:
             "temperature": 0.1,
         }
         if use_json:
+            # Constrain the model to valid JSON — hardens parse_recipes against the
+            # occasional prose-wrapped reply. Gemini's OpenAI-compat endpoint supports
+            # it; if a backend doesn't, _call_with_retry turns it off for the process.
             kwargs["response_format"] = {"type": "json_object"}
         return client.chat.completions.create(**kwargs)
 
-    if log:
-        try: log("⏳ Waiting for AI completion...")
-        except Exception: pass
-
-    try:
-        resp = _call_with_retry(make_call)
-        raw = resp.choices[0].message.content or ""
-        if log:
-            try: log(f"📥 Received AI response ({len(raw)} chars). Structuring...")
-            except Exception: pass
-        recipes = _normalize(parse_recipes(raw))
-        if log:
-            try: log(f"✨ Successfully structured {len(recipes)} recipe(s)!")
-            except Exception: pass
-        return recipes
-    except Exception as e:
-        if log:
-            try: log(f"❌ AI Error ({type(e).__name__}): {str(e)[:250]}")
-            except Exception: pass
-        raise
+    resp = _call_with_retry(make_call)
+    raw = resp.choices[0].message.content or ""
+    return _normalize(parse_recipes(raw))
 
 
 def extract_recipes(
@@ -258,12 +217,11 @@ def extract_recipes(
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
-    known_tags=(),
     units_system: str = "metric",
 ) -> list[dict]:
     """Extract recipe(s) from one or more images."""
     # Multimodal message: the text prompt + every image.
-    content = [{"type": "text", "text": build_user_prompt(target_language, user_note, known_categories=known_categories, known_tags=known_tags, units_system=units_system)}]
+    content = [{"type": "text", "text": build_user_prompt(target_language, user_note, known_categories=known_categories, units_system=units_system)}]
     for p in image_paths:
         content.append({"type": "image_url", "image_url": {"url": image_to_data_url(p)}})
     return _structure(content)
@@ -274,7 +232,6 @@ def extract_recipes_from_text(
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
-    known_tags=(),
     units_system: str = "metric",
 ) -> list[dict]:
     """Extract recipe(s) from pasted raw text — no image, no scrape. The text goes
@@ -283,7 +240,7 @@ def extract_recipes_from_text(
     prompt = build_user_prompt(
         target_language, user_note,
         source="the recipe text below", known_categories=known_categories,
-        known_tags=known_tags, units_system=units_system,
+        units_system=units_system,
     )
     content = [{"type": "text", "text": f"{prompt}\n\n--- RECIPE TEXT ---\n{text}"}]
     return _structure(content)
@@ -390,7 +347,6 @@ def extract_recipes_from_url(
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
-    known_tags=(),
     units_system: str = "metric",
 ) -> list[dict]:
     """Extract recipe(s) from a recipe-website URL.
@@ -402,7 +358,7 @@ def extract_recipes_from_url(
     Won't work on social posts (Instagram/TikTok) — screenshot those instead.
     """
     source_text, image_url = _scrape_url(url)
-    prompt = build_user_prompt(target_language, user_note, source="the recipe text below", known_categories=known_categories, known_tags=known_tags, units_system=units_system)
+    prompt = build_user_prompt(target_language, user_note, source="the recipe text below", known_categories=known_categories, units_system=units_system)
     content = [{"type": "text", "text": f"{prompt}\n\n--- RECIPE SOURCE ---\n{source_text}"}]
     recipes = _structure(content)
     # carry the page's dish photo + source link through so push.py can attach them
@@ -453,6 +409,7 @@ def _assert_safe_url(url: str) -> None:
 def _scrape_url(url: str) -> tuple[str, str]:
     """Fetch a URL and pull a rough recipe text block + the dish photo URL out
     of it. Raises a clear error if no structured recipe is found on the page."""
+    import httpx
     from recipe_scrapers import scrape_html
 
     _assert_safe_url(url)
@@ -494,20 +451,22 @@ def _scrape_url(url: str) -> tuple[str, str]:
 
 
 # ── Social / video import (yt-dlp) — Phase 1: caption only ──────────────
+VIDEO_HOSTS = (
+    "instagram.com", "tiktok.com", "youtube.com", "youtu.be",
+    "facebook.com", "fb.watch",
+)
+
+
 def is_video_url(url: str) -> bool:
-    """True if this is an Instagram / TikTok / YouTube / FB video post link."""
+    """True if the URL is a social/video host we route through yt-dlp instead of
+    the schema.org recipe scraper."""
     u = (url or "").lower()
-    return any(domain in u for domain in [
-        "instagram.com/reel", "instagram.com/p", "instagram.com/tv",
-        "tiktok.com", "vm.tiktok.com",
-        "youtube.com/watch", "youtu.be", "youtube.com/shorts",
-        "facebook.com/reel", "fb.watch", "facebook.com/watch",
-    ])
+    return any(host in u for host in VIDEO_HOSTS)
 
 
 def _video_metadata(url: str) -> dict:
-    """Fetch video post title/caption and thumbnail image URL via yt-dlp.
-    No video file is downloaded (skip_download=True) — fast, zero storage."""
+    """A social post's caption/description + thumbnail via yt-dlp — metadata only,
+    no video download, no ffmpeg."""
     import yt_dlp  # lazy: only needed on the video path
 
     _assert_safe_url(url)
@@ -515,9 +474,9 @@ def _video_metadata(url: str) -> dict:
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
     return {
-        "title": (info.get("title") or "").strip(),
-        "description": (info.get("description") or "").strip(),
-        "thumbnail": (info.get("thumbnail") or "").strip(),
+        "title": info.get("title") or "",
+        "description": info.get("description") or "",
+        "thumbnail": info.get("thumbnail") or "",
     }
 
 
@@ -529,20 +488,32 @@ def extract_recipes_from_video(
     units_system: str = "metric",
 ) -> list[dict]:
     """Extract a recipe from a social VIDEO post (TikTok / Reel / Short / FB).
-    Pulls the caption/description text + video thumbnail and passes them to the LLM.
-    If the recipe text isn't in the caption (e.g. video overlay only), raises a clear
-    error so the UI suggests taking a screenshot or dictating a voice note instead."""
-    meta = _video_metadata(url)
-    caption = (meta.get("description") or meta.get("title") or "").strip()
-    if not caption:
+
+    Phase 1: read the post's CAPTION (+ title) via yt-dlp and structure it with
+    the SAME LLM call as every other path. Works when the creator wrote the recipe
+    in the caption; if it's only spoken/shown in the video the caption is empty and
+    we raise a clear 'screenshot it instead' error. The post thumbnail becomes the
+    dish photo; the link is saved as the source.
+    """
+    try:
+        meta = _video_metadata(url)
+    except Exception as e:
         raise ValueError(
-            "Couldn't read any text from that video post. If the recipe is only written "
-            "inside the video itself, take a screenshot of the ingredients and upload it under Photo, "
-            "or record a voice note dictating what you see."
+            "Couldn't read that social link — it may be private/login-walled or "
+            f"unsupported. Screenshot the post and share the image instead. ({str(e)[:150]})"
         )
 
-    # Make thumbnail available as image_url on the extracted recipe
-    source_text = f"Title: {meta.get('title')}\n\nCaption / Description:\n{caption}"
+    title, caption = meta["title"], meta["description"]
+    if not caption.strip():
+        raise ValueError(
+            "No recipe text in this post's caption (it may only be in the video). "
+            "Screenshot the post and share the image instead."
+        )
+
+    parts = [f"Title: {title}"] if title else []
+    parts.append(f"Caption:\n{caption}")
+    source_text = "\n\n".join(parts)
+
     prompt = build_user_prompt(
         target_language, user_note,
         source="the social-media post text below", known_categories=known_categories,
@@ -550,43 +521,32 @@ def extract_recipes_from_video(
     )
     content = [{"type": "text", "text": f"{prompt}\n\n--- POST TEXT ---\n{source_text}"}]
     recipes = _structure(content)
-    # attach thumbnail if LLM didn't return an image URL
-    if meta.get("thumbnail"):
-        for r in recipes:
-            if not r.get("image_url"):
-                r["image_url"] = meta["thumbnail"]
-            if not r.get("source_url"):
-                r["source_url"] = url
+    for r in recipes:
+        if meta["thumbnail"]:
+            r["image_url"] = meta["thumbnail"]
+        r["source_url"] = url
     return recipes
 
 
-# ── Unified extraction (B3 multi-source combine) ───────────────────────
 def extract_recipes_from_sources(
-    image_paths: list[str] = (),
+    image_paths: list[str] | None = None,
     url: str = "",
     text: str = "",
-    doc_texts: list[str] = (),
+    doc_texts: list[str] | None = None,
     audio_path: str = "",
     user_note: str = "",
     target_language: str = "English",
     known_categories=(),
     units_system: str = "metric",
     progress=None,
-    log=None,
 ) -> list[dict]:
-    """Combine any mix of sources (photos, link, pasted text, PDFs, voice note)
-    into structured recipe(s). Single unified pipeline used by B3 combine jobs."""
-    def _log(msg):
-        if log:
-            try: log(msg)
-            except Exception: pass
-
-    _log("🚀 Starting recipe extraction...")
-    if progress:
-        try:
-            progress(0.1)
-        except Exception:
-            pass
+    """Unified combine extractor: takes ANY combination of inputs (images, a URL,
+    pasted text, uploaded documents, and a voice note), builds a single multimodal
+    prompt where the text parts are clearly labelled blocks, and runs ONE extraction.
+    Used by /api/extract (sync) and /api/extract/job (async)."""
+    url = (url or "").strip()
+    image_paths = list(image_paths or [])
+    doc_texts = [t for t in (doc_texts or []) if t and t.strip()]
 
     text_blocks: list[str] = []
     page_image_url = ""
@@ -594,44 +554,39 @@ def extract_recipes_from_sources(
     if url:
         if is_video_url(url):
             try:
-                _log(f"🎬 Reading social video post: {url}")
                 meta = _video_metadata(url)
-                cap = (meta.get("description") or meta.get("title") or "").strip()
+                cap = "\n\n".join(p for p in [
+                    f"Title: {meta['title']}" if meta.get("title") else "",
+                    f"Caption:\n{meta['description']}" if meta.get("description") else "",
+                ] if p)
                 if cap.strip():
                     text_blocks.append(f"--- LINKED POST CAPTION ---\n{cap}")
                 page_image_url = meta.get("thumbnail") or ""
-                _log("✅ Read video metadata & thumbnail.")
-            except Exception as e:
-                _log(f"⚠️ Video metadata warning: {str(e)[:150]}")
+            except Exception:
+                pass
         else:
             try:
-                _log(f"🌐 Scraping web page: {url}")
                 source_text, page_image_url = _scrape_url(url)
                 if source_text.strip():
                     text_blocks.append(f"--- LINKED PAGE ---\n{source_text}")
-                    _log(f"✅ Scraped recipe text ({len(source_text)} chars).")
-            except Exception as e:
-                _log(f"❌ URL Scrape error: {str(e)[:200]}")
-                raise
+            except Exception:
+                pass
 
     if text and text.strip():
         text_blocks.append(f"--- PASTED TEXT ---\n{text.strip()}")
-        _log(f"📝 Added pasted text ({len(text)} chars).")
 
     for dt in doc_texts:
-        if dt.strip():
-            text_blocks.append(f"--- ATTACHED DOCUMENT ---\n{dt.strip()}")
-            _log("📄 Added attached document text.")
+        text_blocks.append(f"--- DOCUMENT ---\n{dt.strip()}")
 
     if audio_path:
         import transcribe
-        _log("🎙 Transcribing audio dictation...")
-        transcript = transcribe.transcribe_audio(audio_path)
-        if transcript and transcript.strip():
-            text_blocks.append(
-                f"--- SPOKEN (transcribed from audio/video) ---\n{transcript.strip()}"
+        transcript = transcribe.transcribe_audio(audio_path, progress=progress)
+        if transcript.strip():
+            text_blocks.append(f"--- SPOKEN (transcribed from audio/video) ---\n{transcript.strip()}")
+        elif not text_blocks and not image_paths:
+            raise ValueError(
+                "Couldn't make out any speech in that audio — try again, a bit closer to the mic."
             )
-            _log("✅ Audio transcribed successfully.")
 
     if not text_blocks and not image_paths:
         raise ValueError(
@@ -644,21 +599,10 @@ def extract_recipes_from_sources(
     )
     text_payload = prompt + ("\n\n" + "\n\n".join(text_blocks) if text_blocks else "")
     content = [{"type": "text", "text": text_payload}]
-
     for p in image_paths:
         content.append({"type": "image_url", "image_url": {"url": image_to_data_url(p)}})
-        _log(f"🖼 Attached photo payload ({os.path.basename(p)})")
 
-    if progress:
-        try:
-            progress(0.4)
-        except Exception:
-            pass
-
-    try:
-        recipes = _structure(content, log=_log)
-    except TypeError:
-        recipes = _structure(content)
+    recipes = _structure(content)
     for r in recipes:
         if page_image_url:
             r.setdefault("image_url", page_image_url)

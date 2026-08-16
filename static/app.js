@@ -7,7 +7,6 @@ function mixer() {
     languages: ['English', 'Polish', 'German', 'French', 'Spanish', 'Italian', 'Ukrainian'],
     foods: [],
     categories: [],
-    tags: [],
     recipeNames: [],
     history: [],
     users: [], newUser: { username: '', password: '', display_name: '' }, userMsg: '',   // admin user management (v0.15.0)
@@ -21,16 +20,13 @@ function mixer() {
     aiTest: { ok: false, msg: '' },
     genKeyMsg: '', cfgMsg: '',
     // recipe input
-    activeTab: 'link',   // link | photo | voice | text
     fileList: null, url: '', pastedText: '', language: 'English', unitsSystem: 'metric', prompt: '',
     recording: false, audioBlob: null, audioUrl: '', recElapsed: 0, audioProgress: 0, jobActive: false,   // voice note (B3) + tab-close resume
     // review
     recipe: emptyRecipe(), instructionsText: '', queue: [],
-    photoFile: null, photoPreview: '', categoryInput: '', tagInput: '',
-    commonUnits: ['g', 'ml', 'tbsp', 'tsp', 'cup', 'clove', 'slice', 'piece', 'can', 'pinch', 'pack', 'head', 'stick', 'rasher', 'kg', 'l', 'oz', 'lb', 'fl oz'],
-    foodPickerModal: false, foodPickerSearch: '', foodPickerTargetIng: null,
+    photoFile: null, photoPreview: '', categoryInput: '',
+    sourceImages: [], zoomSrc: '',
     dupModal: false, _dupOk: false,
-    cropModal: false, cropSrc: '', cropAngle: 0, cropMargins: { top: 0, bottom: 0, left: 0, right: 0 },
     // cookbook (B7, dev)
     cbRecipes: [], cbStructured: [], cbExpanded: null, cbEditIndex: null, cookbookJob: null, cbReviewJobId: '',
     // done
@@ -54,7 +50,6 @@ function mixer() {
     async afterAuth() {
       try { this.foods = (await getJSON('/api/foods')).foods || []; } catch (_) { this.foods = []; }
       try { this.categories = (await getJSON('/api/categories')).categories || []; } catch (_) { this.categories = []; }
-      try { this.tags = (await getJSON('/api/tags')).tags || []; } catch (_) { this.tags = []; }
       try { this.recipeNames = (await getJSON('/api/recipe-names')).names || []; } catch (_) { this.recipeNames = []; }
       try { this.history = (await getJSON('/api/history')).items || []; } catch (_) { this.history = []; }
       this.error = ''; this.view = 'input';
@@ -87,7 +82,6 @@ function mixer() {
         ai_base: c.ai_base_url || 'https://generativelanguage.googleapis.com/v1beta/openai/',
         ai_model: c.ai_model || 'gemini-3.1-flash-lite',
         ai_rpm: c.ai_rpm || '',
-        ai_rules: c.ai_rules || '',
         auth_user: c.auth_user || '', auth_pass: '',
       };
     },
@@ -268,42 +262,50 @@ function mixer() {
     },
 
     // ── recipe flow ─────────────────────────────────────────────────────
-    hasTabSource(t) {
-      if (t === 'link') return !!(this.url || '').trim();
-      if (t === 'photo') return !!(this.fileList && this.fileList.length);
-      if (t === 'voice') return !!this.audioBlob || this.recording;
-      if (t === 'text') return !!(this.pastedText || '').trim();
-      return false;
-    },
     async extract() {
-      return this.extractJob();
-    },
-    async extractJob() {
-      this.error = ''; this.audioProgress = 0; this.extractLogs = ['[00:00:00] 🚀 Initializing extraction job...'];
+      this.error = '';
+      // Any audio/video → background job (whisper is slow). Everything else combines
+      // synchronously (the backend merges all provided sources into one recipe).
+      if (this.audioBlob) { return this.extractJob(); }
       this.loadingMsg = 'Reading your recipe…'; this.loading = true;
+      try { localStorage.setItem('mm-lang', this.language); localStorage.setItem('mm-units', this.unitsSystem); } catch (_) {}   // remember for next time / share flow
+      this.clearSourceImages();
+      if (this.fileList && this.fileList.length) this.sourceImages = [...this.fileList].filter(f => (f.type || '').startsWith('image/')).map(f => URL.createObjectURL(f));
+      try {
+        const fd = new FormData();
+        if (this.fileList && this.fileList.length) { for (const f of this.fileList) fd.append('files', f); }
+        if (this.url.trim()) { fd.append('url', this.url.trim()); }
+        if (this.pastedText.trim()) { fd.append('text', this.pastedText.trim()); }
+        fd.append('language', this.language); fd.append('prompt', this.prompt || ''); fd.append('units_system', this.unitsSystem);
+        const r = await fetch('/api/extract', { method: 'POST', body: fd, credentials: 'same-origin' });
+        if (!r.ok) throw new Error(await detail(r));
+        const recipes = (await r.json()).recipes || [];
+        if (!recipes.length) throw new Error('No recipe found — try a clearer shot or a different link.');
+        this.queue = recipes.slice(1); this.updateMode = null; this.loadRecipe(recipes[0]); this.view = 'review';
+      } catch (e) { this.error = String(e.message || e); }
+      finally { this.loading = false; }
+    },
+    // Combine flow: when a voice note / screen-recording is in the mix, transcription (and
+    // any link fetch) runs server-side as a job we poll, so the slow first run doesn't hang
+    // the request. Sends every source the user added — they get merged into one recipe.
+    async extractJob() {
+      this.error = ''; this.audioProgress = 0;
+      this.loadingMsg = 'Working…'; this.loading = true;
       try { localStorage.setItem('mm-lang', this.language); localStorage.setItem('mm-units', this.unitsSystem); } catch (_) {}
       this.clearSourceImages();
       if (this.fileList && this.fileList.length) this.sourceImages = [...this.fileList].filter(f => (f.type || '').startsWith('image/')).map(f => URL.createObjectURL(f));
       try {
         const fd = new FormData();
-        if (this.activeTab === 'link') {
-          if (this.url.trim()) fd.append('url', this.url.trim());
-        } else if (this.activeTab === 'photo') {
-          if (this.fileList && this.fileList.length) { for (const f of this.fileList) fd.append('files', f); }
-        } else if (this.activeTab === 'text') {
-          if (this.pastedText.trim()) fd.append('text', this.pastedText.trim());
-        } else {
-          if (this.fileList && this.fileList.length) { for (const f of this.fileList) fd.append('files', f); }
-          if (this.url.trim()) { fd.append('url', this.url.trim()); }
-          if (this.pastedText.trim()) { fd.append('text', this.pastedText.trim()); }
-        }
+        if (this.fileList && this.fileList.length) { for (const f of this.fileList) fd.append('files', f); }
+        if (this.url.trim()) { fd.append('url', this.url.trim()); }
+        if (this.pastedText.trim()) { fd.append('text', this.pastedText.trim()); }
         if (this.audioBlob) { fd.append('audio', this.audioBlob, 'note.webm'); }
         fd.append('language', this.language); fd.append('prompt', this.prompt || ''); fd.append('units_system', this.unitsSystem);
         const r = await fetch('/api/extract/job', { method: 'POST', body: fd, credentials: 'same-origin' });
         if (!r.ok) throw new Error(await detail(r));
         this._extractJob = (await r.json()).job_id;
         this.jobActive = true;
-        try { localStorage.setItem('mm-extract-job', this._extractJob); } catch (_) {}
+        try { localStorage.setItem('mm-extract-job', this._extractJob); } catch (_) {}   // tab-close resume
         this.jobPoll();
       } catch (e) { this.error = String(e.message || e); this.loading = false; }
     },
@@ -313,17 +315,11 @@ function mixer() {
       try { job = await getJSON('/api/extract/job/' + jid); }
       catch (e) { this.error = String(e.message || e); this.loading = false; this._clearExtractJob(); return; }
       this.audioProgress = job.progress || 0;
-      this.extractLogs = job.logs || [];
       this.loadingMsg = ({
         'fetching link': 'Fetching the link…',
         'transcribing': 'Transcribing… ' + Math.round((job.progress || 0) * 100) + '%',
         'structuring': 'Structuring the recipe…',
       })[job.phase] || 'Working…';
-      if (this.$refs.logTerminal) {
-        this.$nextTick(() => {
-          try { this.$refs.logTerminal.scrollTop = this.$refs.logTerminal.scrollHeight; } catch (_) {}
-        });
-      }
       if (job.status === 'done') {
         this.loading = false; this.audioProgress = 0; this._clearExtractJob();
         const recipes = (job.recipes || []).map(x => x.recipe);
@@ -335,30 +331,29 @@ function mixer() {
         this.loading = false; this.audioProgress = 0; this._clearExtractJob();
         this.error = job.error || 'Extraction failed.'; return;
       }
-      this._extractTimer = setTimeout(() => this.jobPoll(), 500);
+      this._extractTimer = setTimeout(() => this.jobPoll(), 1500);
     },
     _clearExtractJob() { this._extractJob = null; this.jobActive = false; try { localStorage.removeItem('mm-extract-job'); } catch (_) {} },
+    // Tab-close resume: a voice-note / combine extract runs as a server job persisted to /data,
+    // so if the tab is closed and reopened we re-attach to it and pick the progress back up
+    // (mirrors the cookbook job resume). jobPoll handles every outcome (progress / review / error).
     async audioResume() {
       let jid; try { jid = localStorage.getItem('mm-extract-job'); } catch (_) {}
       if (!jid) return;
-      try { await getJSON('/api/extract/job/' + jid); }
-      catch (_) { this._clearExtractJob(); return; }
+      try { await getJSON('/api/extract/job/' + jid); }   // still there? (404 once the job is gone)
+      catch (_) { this._clearExtractJob(); return; }       // stale id — drop it silently, no error banner
       this._extractJob = jid; this.jobActive = true;
       this.loading = true; this.loadingMsg = 'Working…'; this.audioProgress = 0;
       this.jobPoll();
     },
+    // Escape hatch on the progress overlay: stop waiting. Detaches the browser only — there is no
+    // server-side cancel for a single in-flight LLM call (closing the tab has the same effect), but
+    // it frees the user from a job that can't finish (e.g. the server was restarted mid-transcription).
     cancelExtractJob() {
-      const jid = this._extractJob;
       try { clearTimeout(this._extractTimer); } catch (_) {}
-      if (jid) {
-        api('/api/extract/job/' + jid, { method: 'DELETE' }).catch(() => {});
-      }
       this._clearExtractJob();
       this.loading = false; this.audioProgress = 0; this.loadingMsg = '';
-      this.view = 'input'; this.showToast('Extraction cancelled');
-    },
-    cancelExtract() {
-      this.cancelExtractJob();
+      this.view = 'input'; this.showToast('Stopped waiting for the import');
     },
     // ── voice note (B3) ──────────────────────────────────────────────────
     async toggleRecord() {
@@ -462,78 +457,6 @@ function mixer() {
         /(instagram|tiktok|youtube|youtu\.be|facebook|fb\.watch)/i.test(this.recipe.source_url || '');
     },
 
-    // ── Image Cropper & Photo Refinement (v0.21.0) ────────────────────────
-    openCrop(src) {
-      if (!src) return;
-      this.cropSrc = src;
-      this.cropAngle = 0;
-      this.cropMargins = { top: 0, bottom: 0, left: 0, right: 0 };
-      this.cropModal = true;
-      this.$nextTick(() => this.renderCropCanvas());
-    },
-    rotateCrop() {
-      this.cropAngle = (this.cropAngle + 90) % 360;
-      this.renderCropCanvas();
-    },
-    resetCrop() {
-      this.cropAngle = 0;
-      this.cropMargins = { top: 0, bottom: 0, left: 0, right: 0 };
-      this.renderCropCanvas();
-    },
-    renderCropCanvas() {
-      const canvas = this.$refs.cropCanvas;
-      if (!canvas || !this.cropSrc) return;
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        const rad = (this.cropAngle * Math.PI) / 180;
-        const swap = (this.cropAngle / 90) % 2 !== 0;
-        const width = swap ? img.height : img.width;
-        const height = swap ? img.width : img.height;
-        canvas.width = width;
-        canvas.height = height;
-
-        ctx.save();
-        ctx.translate(width / 2, height / 2);
-        ctx.rotate(rad);
-        ctx.drawImage(img, -img.width / 2, -img.height / 2);
-        ctx.restore();
-      };
-      img.src = this.cropSrc;
-    },
-    applyCrop() {
-      const sourceCanvas = this.$refs.cropCanvas;
-      if (!sourceCanvas) return;
-      const m = this.cropMargins;
-      const x = (m.left / 100) * sourceCanvas.width;
-      const y = (m.top / 100) * sourceCanvas.height;
-      const w = sourceCanvas.width * (1 - (m.left + m.right) / 100);
-      const h = sourceCanvas.height * (1 - (m.top + m.bottom) / 100);
-
-      if (w <= 10 || h <= 10) {
-        this.showToast('Crop region too small');
-        return;
-      }
-
-      const outCanvas = document.createElement('canvas');
-      outCanvas.width = Math.round(w);
-      outCanvas.height = Math.round(h);
-      const outCtx = outCanvas.getContext('2d');
-      outCtx.drawImage(sourceCanvas, Math.round(x), Math.round(y), Math.round(w), Math.round(h), 0, 0, Math.round(w), Math.round(h));
-
-      outCanvas.toBlob(blob => {
-        if (!blob) return;
-        this.clearPhoto();
-        const file = new File([blob], 'cropped-dish.jpg', { type: 'image/jpeg' });
-        this.photoFile = file;
-        this.photoPreview = URL.createObjectURL(blob);
-        this.recipe.image_url = '';
-        this.cropModal = false;
-        this.showToast('Photo updated!');
-      }, 'image/jpeg', 0.92);
-    },
-
     loadRecipe(r) {
       this.clearPhoto();   // each recipe starts without a picked photo
       this.cbEditIndex = null;   // normal review flow (not a cookbook edit) unless set after
@@ -547,7 +470,6 @@ function mixer() {
       };
       this.instructionsText = (r.instructions || []).join('\n');
       this.categoryInput = '';
-      this.tagInput = '';
       this.saveSession();
     },
     addIngredient() { this.recipe.ingredients.push({ quantity: '', unit: '', food: '', note: '', title: '' }); },
@@ -567,12 +489,6 @@ function mixer() {
       if (v && !this.recipe.categories.some(c => c.toLowerCase() === v.toLowerCase())) this.recipe.categories.push(v);
     },
     removeCategory(i) { this.recipe.categories.splice(i, 1); },
-    addTag(name) {
-      const v = (name == null ? this.tagInput : name).trim();
-      this.tagInput = '';
-      if (v && !(this.recipe.tags ||= []).some(t => t.toLowerCase() === v.toLowerCase())) this.recipe.tags.push(v);
-    },
-    removeTag(i) { (this.recipe.tags ||= []).splice(i, 1); },
     nameExists() {
       const n = (this.recipe.name || '').trim().toLowerCase();
       return !!n && this.recipeNames.some(x => x.toLowerCase() === n);
@@ -595,48 +511,13 @@ function mixer() {
     },
     filteredFoods(q) {
       const query = (q || '').trim().toLowerCase();
-      if (!query) {
-        return this.foods.slice(0, 10).map(f => ({ name: f, status: 'exists' }));
-      }
-      return this.foods
-        .filter(f => f.toLowerCase().includes(query))
-        .slice(0, 10)
-        .map(f => ({ name: f, status: 'exists' }));
-    },
-    filteredUnits(q) {
-      const query = (q || '').trim().toLowerCase();
-      if (!query) return this.commonUnits.slice(0, 10);
-      return this.commonUnits.filter(u => u.toLowerCase().includes(query)).slice(0, 8);
+      if (!query) return [];
+      return this.foods.filter(f => f.toLowerCase().includes(query)).slice(0, 8);
     },
     filteredCategories(q) {
       const query = (q || '').trim().toLowerCase();
       if (!query) return [];
       return this.categories.filter(c => c.toLowerCase().includes(query)).slice(0, 8);
-    },
-    filteredTags(q) {
-      const query = (q || '').trim().toLowerCase();
-      if (!query) return [];
-      return this.tags.filter(t => t.toLowerCase().includes(query)).slice(0, 8);
-    },
-    openFoodPicker(ing = null) {
-      this.foodPickerTargetIng = ing;
-      this.foodPickerSearch = ing ? (ing.food || '') : '';
-      this.foodPickerModal = true;
-    },
-    selectPickerFood(foodName) {
-      if (this.foodPickerTargetIng) {
-        this.foodPickerTargetIng.food = foodName;
-      } else {
-        this.recipe.ingredients.push({ quantity: '', unit: '', food: foodName, note: '', title: '' });
-      }
-      this.foodPickerModal = false;
-      this.foodPickerTargetIng = null;
-      this.saveSession();
-    },
-    filteredPickerFoods() {
-      const q = (this.foodPickerSearch || '').trim().toLowerCase();
-      if (!q) return this.foods;
-      return this.foods.filter(f => f.toLowerCase().includes(q));
     },
     alreadyImported() {
       // non-blocking dedupe: does the entered URL match something already imported?
@@ -1009,7 +890,7 @@ function mixer() {
 
 // ── helpers ────────────────────────────────────────────────────────────
 function emptyRecipe() { return { name: '', description: '', servings: null, yield: '', image_url: '', tags: [], categories: [], notes: [], source_url: '', ingredients: [] }; }
-function emptyCfg() { return { mealie_url: '', mealie_token: '', ai_key: '', ai_base: '', ai_model: '', ai_rpm: '', ai_rules: '', auth_user: '', auth_pass: '', api_key: '' }; }
+function emptyCfg() { return { mealie_url: '', mealie_token: '', ai_key: '', ai_base: '', ai_model: '', ai_rpm: '', auth_user: '', auth_pass: '', api_key: '' }; }
 function api(path, opts = {}) {
   return fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }, ...opts });
 }

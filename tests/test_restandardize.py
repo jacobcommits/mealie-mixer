@@ -182,32 +182,3 @@ def test_fetch_recipes_returns_slug_name():
     assert len(result) == 2
     assert result[0]["name"] == "A Salad"  # sorted
     assert result[1]["slug"] == "z-soup"
-
-
-def test_restandardize_passes_known_tags_to_extract():
-    """/api/restandardize fetches tags and passes known_tags to extract_recipes_from_text."""
-    from fastapi.testclient import TestClient
-    from app import fastapi_app
-    import api
-
-    client = TestClient(fastapi_app)
-    fastapi_app.dependency_overrides[api.require_access] = lambda: None
-
-    try:
-        with patch("api.fetch_recipe", return_value={"name": "Soup", "recipeIngredient": [{"display": "salt"}]}), \
-             patch("api.fetch_category_names", return_value=["Dinner"]), \
-             patch("api.fetch_tag_names", return_value=["Quick"]), \
-             patch("api.extract_recipes_from_text", return_value=[{"name": "Clean Soup"}]) as mock_extract:
-
-            resp = client.post("/api/restandardize", json={"slug": "soup", "language": "English"})
-
-        assert resp.status_code == 200
-        mock_extract.assert_called_once_with(
-            push.recipe_to_text({"name": "Soup", "recipeIngredient": [{"display": "salt"}]}),
-            target_language="English",
-            known_categories=["Dinner"],
-            known_tags=["Quick"],
-            units_system="metric",
-        )
-    finally:
-        fastapi_app.dependency_overrides.clear()
