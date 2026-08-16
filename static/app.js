@@ -368,6 +368,11 @@ function mixer() {
       this.loading = false; this.audioProgress = 0; this.loadingMsg = '';
       this.view = 'input'; this.showToast('Stopped waiting for the import');
     },
+    cancelExtract() {
+      if (this.jobActive) { this.cancelExtractJob(); return; }
+      this.loading = false; this.loadingMsg = '';
+      this.showToast('Extraction cancelled');
+    },
     // ── voice note (B3) ──────────────────────────────────────────────────
     async toggleRecord() {
       if (this.recording) { try { this._rec && this._rec.stop(); } catch (_) {} return; }

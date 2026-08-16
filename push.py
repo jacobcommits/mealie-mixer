@@ -111,13 +111,16 @@ def fetch_category_names() -> list[str]:
     url, token = _mealie()
     if not (url and token):
         return []
-    with httpx.Client(
-        base_url=url, headers={"Authorization": f"Bearer {token}"}, timeout=30
-    ) as client:
-        r = client.get("/api/organizers/categories", params={"perPage": -1})
-        r.raise_for_status()
-        items = _extract_items(r.json())
-        return sorted({it["name"] for it in items if isinstance(it, dict) and it.get("name")})
+    try:
+        with httpx.Client(
+            base_url=url, headers={"Authorization": f"Bearer {token}"}, timeout=5.0
+        ) as client:
+            r = client.get("/api/organizers/categories", params={"perPage": -1})
+            r.raise_for_status()
+            items = _extract_items(r.json())
+            return sorted({it["name"] for it in items if isinstance(it, dict) and it.get("name")})
+    except Exception:
+        return []
 
 
 def fetch_tag_names() -> list[str]:
@@ -127,13 +130,16 @@ def fetch_tag_names() -> list[str]:
     url, token = _mealie()
     if not (url and token):
         return []
-    with httpx.Client(
-        base_url=url, headers={"Authorization": f"Bearer {token}"}, timeout=30
-    ) as client:
-        r = client.get("/api/organizers/tags", params={"perPage": -1})
-        r.raise_for_status()
-        items = _extract_items(r.json())
-        return sorted({it["name"] for it in items if isinstance(it, dict) and it.get("name")})
+    try:
+        with httpx.Client(
+            base_url=url, headers={"Authorization": f"Bearer {token}"}, timeout=5.0
+        ) as client:
+            r = client.get("/api/organizers/tags", params={"perPage": -1})
+            r.raise_for_status()
+            items = _extract_items(r.json())
+            return sorted({it["name"] for it in items if isinstance(it, dict) and it.get("name")})
+    except Exception:
+        return []
 
 
 def fetch_recipe_names() -> list[str]:

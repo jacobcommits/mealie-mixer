@@ -846,7 +846,7 @@
     <div class="cbbar" x-show="audioProgress > 0" x-cloak style="max-width:240px">
       <div class="cbbar-fill" :style="'width:' + Math.round(audioProgress * 100) + '%'"></div>
     </div>
-    <button class="btn ghost sm" x-show="jobActive" x-cloak @click="cancelExtractJob()" style="margin-top:1rem">Cancel</button>
+    <button class="btn ghost sm" x-show="loading" x-cloak @click="cancelExtract()" style="margin-top:1rem">Cancel</button>
   </div>
   
   <div class="toast" x-show="toast" x-text="toast" x-transition></div>

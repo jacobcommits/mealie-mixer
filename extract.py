@@ -207,7 +207,7 @@ def _structure(content: list) -> list[dict]:
     if not api_key:
         raise RuntimeError("AI_API_KEY is not set — configure it in the setup page or .env.")
 
-    client = OpenAI(base_url=config.get("AI_BASE_URL"), api_key=api_key)
+    client = OpenAI(base_url=config.get("AI_BASE_URL"), api_key=api_key, timeout=45.0)
     _rpm_wait()   # honour the configured AI requests/min cap (bulk imports)
 
     def make_call(use_json: bool):
@@ -436,7 +436,7 @@ def _scrape_url(url: str) -> tuple[str, str]:
 
     _assert_safe_url(url)
     headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) MealieMixer/1.0"}
-    resp = httpx.get(url, headers=headers, follow_redirects=True, timeout=30)
+    resp = httpx.get(url, headers=headers, follow_redirects=True, timeout=15)
     resp.raise_for_status()
 
     scraper = scrape_html(resp.text, org_url=url, wild_mode=True)
@@ -492,7 +492,7 @@ def _video_metadata(url: str) -> dict:
     import yt_dlp  # lazy: only needed on the video path
 
     _assert_safe_url(url)
-    opts = {"quiet": True, "skip_download": True, "noplaylist": True, "no_warnings": True}
+    opts = {"quiet": True, "skip_download": True, "noplaylist": True, "no_warnings": True, "socket_timeout": 15}
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
     return {
