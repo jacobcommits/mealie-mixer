@@ -213,7 +213,7 @@ def _structure(content: list, log=None) -> list[dict]:
         try: log(f"🤖 Connecting to AI Provider ({model} @ {base_url[:35]}...)")
         except Exception: pass
 
-    client = OpenAI(base_url=base_url, api_key=api_key)
+    client = OpenAI(base_url=base_url, api_key=api_key, timeout=45.0)
     _rpm_wait()   # honour the configured AI requests/min cap (bulk imports)
 
     def make_call(use_json: bool):
@@ -452,6 +452,24 @@ def _assert_safe_url(url: str) -> None:
             )
 
 
+def _extract_raw_html_text(html: str) -> str:
+    """Fallback text extractor when recipe-scrapers finds no structured recipe.
+    Extracts readable text from HTML for the LLM."""
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "html.parser")
+        for tag in soup(["script", "style", "nav", "footer", "header", "aside", "form"]):
+            tag.decompose()
+        text = soup.get_text(separator="\n")
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        return "\n".join(lines[:250])
+    except Exception:
+        clean = re.sub(r"<(script|style|nav|footer|header)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
+        clean = re.sub(r"<[^>]+>", "\n", clean)
+        lines = [line.strip() for line in clean.splitlines() if line.strip()]
+        return "\n".join(lines[:250])
+
+
 def _scrape_url(url: str) -> tuple[str, str]:
     """Fetch a URL and pull a rough recipe text block + the dish photo URL out
     of it. Raises a clear error if no structured recipe is found on the page."""
@@ -459,41 +477,61 @@ def _scrape_url(url: str) -> tuple[str, str]:
     from recipe_scrapers import scrape_html
 
     _assert_safe_url(url)
-    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) MealieMixer/1.0"}
-    resp = httpx.get(url, headers=headers, follow_redirects=True, timeout=30)
-    resp.raise_for_status()
-
-    scraper = scrape_html(resp.text, org_url=url, wild_mode=True)
-
-    parts: list[str] = []
-    def grab(label, fn):
-        try:
-            val = fn()
-        except Exception:
-            return
-        if not val:
-            return
-        if isinstance(val, (list, tuple)):
-            val = "\n".join(str(v) for v in val)
-        parts.append(f"{label}:\n{val}")
-
-    grab("Title", scraper.title)
-    grab("Yields", scraper.yields)
-    grab("Ingredients", scraper.ingredients)
-    grab("Instructions", scraper.instructions)
-
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
     try:
-        image_url = scraper.image() or ""
-    except Exception:
-        image_url = ""
+        resp = httpx.get(url, headers=headers, follow_redirects=True, timeout=15)
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 403:
+            raise ValueError("That site blocked automated access (403 Forbidden). Screenshot the recipe page and use the Photo tab instead.")
+        raise ValueError(f"Site returned HTTP {e.response.status_code} ({e.response.reason_phrase}).")
+    except Exception as e:
+        raise ValueError(f"Could not reach site ({str(e)[:100]}).")
 
-    text = "\n\n".join(parts).strip()
-    if not text:
-        raise ValueError(
-            "Couldn't find a recipe at that link — no structured recipe data on the page. "
-            "(For social posts use the video path; if the recipe is only in the video, screenshot it.)"
-        )
-    return text, image_url
+    if "Enable JavaScript and cookies to continue" in resp.text or "Access Denied" in resp.text:
+        raise ValueError("That site requires JavaScript / Cloudflare verification. Screenshot the recipe page and use the Photo tab instead.")
+
+    page_text = ""
+    image_url = ""
+    try:
+        scraper = scrape_html(resp.text, org_url=url, wild_mode=True)
+        parts: list[str] = []
+        def grab(label, fn):
+            try:
+                val = fn()
+            except Exception:
+                return
+            if not val:
+                return
+            if isinstance(val, (list, tuple)):
+                val = "\n".join(str(v) for v in val)
+            parts.append(f"{label}:\n{val}")
+
+        grab("Title", scraper.title)
+        grab("Yields", scraper.yields)
+        grab("Ingredients", scraper.ingredients)
+        grab("Instructions", scraper.instructions)
+
+        try:
+            image_url = scraper.image() or ""
+        except Exception:
+            image_url = ""
+
+        page_text = "\n\n".join(parts).strip()
+    except Exception:
+        page_text = ""
+
+    if not page_text.strip():
+        page_text = _extract_raw_html_text(resp.text)
+
+    if not page_text.strip():
+        raise ValueError("No recipe text found on that web page — try screenshotting the recipe instead.")
+
+    return page_text, image_url
 
 
 # ── Social / video import (yt-dlp) — Phase 1: caption only ──────────────
@@ -516,7 +554,7 @@ def _video_metadata(url: str) -> dict:
     import yt_dlp  # lazy: only needed on the video path
 
     _assert_safe_url(url)
-    opts = {"quiet": True, "skip_download": True, "noplaylist": True, "no_warnings": True}
+    opts = {"quiet": True, "skip_download": True, "noplaylist": True, "no_warnings": True, "socket_timeout": 15}
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
     return {
@@ -604,6 +642,7 @@ def extract_recipes_from_sources(
 
     text_blocks: list[str] = []
     page_image_url = ""
+    url_error: str | None = None
 
     if url:
         if is_video_url(url):
@@ -616,6 +655,7 @@ def extract_recipes_from_sources(
                 page_image_url = meta.get("thumbnail") or ""
                 _log("✅ Read video metadata & thumbnail.")
             except Exception as e:
+                url_error = str(e)
                 _log(f"⚠️ Video metadata warning: {str(e)[:150]}")
         else:
             try:
@@ -625,8 +665,8 @@ def extract_recipes_from_sources(
                     text_blocks.append(f"--- LINKED PAGE ---\n{source_text}")
                     _log(f"✅ Scraped recipe text ({len(source_text)} chars).")
             except Exception as e:
+                url_error = str(e)
                 _log(f"❌ URL Scrape error: {str(e)[:200]}")
-                raise
 
     if text and text.strip():
         text_blocks.append(f"--- PASTED TEXT ---\n{text.strip()}")
@@ -648,6 +688,8 @@ def extract_recipes_from_sources(
             _log("✅ Audio transcribed successfully.")
 
     if not text_blocks and not image_paths:
+        if url_error:
+            raise ValueError(url_error)
         raise ValueError(
             "Nothing to extract from — add a photo, a link, some text, or a voice note / video."
         )
