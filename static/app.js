@@ -21,6 +21,7 @@ function mixer() {
     genKeyMsg: '', cfgMsg: '',
     // recipe input
     fileList: null, url: '', pastedText: '', language: 'English', unitsSystem: 'metric', prompt: '',
+    activeTab: 'link',   // link | photo | voice | text
     recording: false, audioBlob: null, audioUrl: '', recElapsed: 0, audioProgress: 0, jobActive: false,   // voice note (B3) + tab-close resume
     // review
     recipe: emptyRecipe(), instructionsText: '', queue: [],
@@ -625,6 +626,13 @@ function mixer() {
       // Are the original inputs still in scope to re-run extraction? (After a page
       // reload they're gone — File objects can't be persisted — so the button hides.)
       return !!(this.fileList?.length || this.url.trim() || this.pastedText.trim() || this.audioBlob);
+    },
+    hasTabSource(tab) {
+      if (tab === 'link') return !!this.url.trim();
+      if (tab === 'photo') return !!(this.fileList && this.fileList.length);
+      if (tab === 'voice') return !!(this.audioBlob || this.recording);
+      if (tab === 'text') return !!this.pastedText.trim();
+      return false;
     },
     reExtract() {
       // Back to the input screen WITHOUT clearing the sources (fileList/url/text/audio/

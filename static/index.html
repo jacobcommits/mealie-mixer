@@ -120,57 +120,83 @@
         <p class="muted small">Add one source or several — a link, recipe images, text, or a voice/video recording — and we'll merge them into one clean recipe.</p>
         <p class="muted small">📚 Importing a whole cookbook? <button type="button" class="linkbtn" @click="openCookbook()">Use Cookbook import</button> in the menu for much better results.</p>
         
-        <label class="filezone">
-          <input type="file" accept="image/*,.pdf,.md,.markdown,.txt,.eml" multiple
-                 @change="fileList = $event.target.files" />
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" x2="12" y1="3" y2="15"></line></svg>
-          <span x-text="fileList && fileList.length
-                  ? (fileList.length + ' file(s) selected')
-                  : 'Drop recipe screenshot(s), photos, or documents here'"></span>
-        </label>
-        
-        <div class="or">and / or</div>
-        
-        <div style="position: relative; display: flex; align-items: center;">
-          <span style="position: absolute; left: 14px; color: var(--muted-dark);">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-          </span>
-          <input class="input" type="url" placeholder="Paste a recipe link" x-model="url" style="padding-left: 42px;" />
+        <div class="tabs-bar">
+          <button type="button" class="tab-btn" :class="{ active: activeTab === 'link' }" @click="activeTab = 'link'">
+            <span>🔗 Link</span>
+            <span class="tab-badge" x-show="hasTabSource('link')"></span>
+          </button>
+          <button type="button" class="tab-btn" :class="{ active: activeTab === 'photo' }" @click="activeTab = 'photo'">
+            <span>📷 Photo</span>
+            <span class="tab-badge" x-show="hasTabSource('photo')"></span>
+          </button>
+          <button type="button" class="tab-btn" x-show="cfgInfo.voice" :class="{ active: activeTab === 'voice' }" @click="activeTab = 'voice'">
+            <span>🎤 Voice</span>
+            <span class="tab-badge" x-show="hasTabSource('voice')"></span>
+          </button>
+          <button type="button" class="tab-btn" :class="{ active: activeTab === 'text' }" @click="activeTab = 'text'">
+            <span>📝 Text</span>
+            <span class="tab-badge" x-show="hasTabSource('text')"></span>
+          </button>
         </div>
-        <small class="warn" x-show="importedNote()" x-text="importedNote()"></small>
-        <small class="muted small" x-show="socialUrl()">ℹ We'll read the post's caption. If instructions are only spoken, record or upload a video clip below.</small>
-        
-        <div class="or">and / or</div>
-        
-        <textarea class="input" rows="4" placeholder="Paste raw recipe text" x-model="pastedText"></textarea>
-        
+
+        <!-- Tab 1: Link -->
+        <div x-show="activeTab === 'link'" class="fade-in">
+          <div style="position: relative; display: flex; align-items: center;">
+            <span style="position: absolute; left: 14px; color: var(--muted-dark);">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            </span>
+            <input class="input" type="url" placeholder="Paste a recipe link (web or social media post)" x-model="url" style="padding-left: 42px;" />
+          </div>
+          <small class="warn" x-show="importedNote()" x-text="importedNote()"></small>
+          <small class="muted small" x-show="socialUrl()">ℹ We'll read the post's caption. If instructions are only spoken, record or upload a video clip under Voice.</small>
+        </div>
+
+        <!-- Tab 2: Photo / Document -->
+        <div x-show="activeTab === 'photo'" class="fade-in">
+          <label class="filezone">
+            <input type="file" accept="image/*,.pdf,.md,.markdown,.txt,.eml" multiple
+                   @change="fileList = $event.target.files" />
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" x2="12" y1="3" y2="15"></line></svg>
+            <span x-text="fileList && fileList.length
+                    ? (fileList.length + ' file(s) selected')
+                    : 'Drop recipe screenshot(s), photos, or documents here'"></span>
+          </label>
+        </div>
+
+        <!-- Tab 3: Voice / Video -->
         <template x-if="cfgInfo.voice">
-          <div class="voicebox">
-            <div class="or">and / or</div>
-            <div class="row" style="align-items: center; gap: 14px;">
-              <button type="button" class="btn ghost" :class="{ recpulse: recording }" @click="toggleRecord()" style="flex: none;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
-                <span x-text="recording ? ('Stop · ' + recClock()) : 'Record voice note'"></span>
-              </button>
-              
-              <!-- HTML5 Audio visualizer canvas (B12: Waveform) -->
-              <canvas id="waveCanvas" width="130" height="42" x-show="recording" style="background: transparent; border-radius: 6px; flex: none;"></canvas>
-              
-              <label class="btn ghost filebtn" style="flex: 1;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
-                <span>Upload audio/video</span>
-                <input type="file" accept="audio/*,video/*" @change="pickAudio($event)" />
-              </label>
+          <div x-show="activeTab === 'voice'" class="fade-in">
+            <div class="voicebox">
+              <div class="row" style="align-items: center; gap: 14px;">
+                <button type="button" class="btn ghost" :class="{ recpulse: recording }" @click="toggleRecord()" style="flex: none;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
+                  <span x-text="recording ? ('Stop · ' + recClock()) : 'Record voice note'"></span>
+                </button>
+                
+                <!-- HTML5 Audio visualizer canvas (B12: Waveform) -->
+                <canvas id="waveCanvas" width="130" height="42" x-show="recording" style="background: transparent; border-radius: 6px; flex: none;"></canvas>
+                
+                <label class="btn ghost filebtn" style="flex: 1;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+                  <span>Upload audio/video</span>
+                  <input type="file" accept="audio/*,video/*" @change="pickAudio($event)" />
+                </label>
+              </div>
+              <div class="audiorow" x-show="audioBlob && !recording">
+                <audio class="audioprev" :src="audioUrl" controls></audio>
+                <button type="button" class="x" @click="clearAudio()" title="remove" aria-label="Remove audio">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
+                </button>
+              </div>
+              <small class="muted small">Dictate steps aloud or upload a screen-recording. We'll transcribe the audio and pair it with any caption/ingredients.</small>
             </div>
-            <div class="audiorow" x-show="audioBlob && !recording">
-              <audio class="audioprev" :src="audioUrl" controls></audio>
-              <button type="button" class="x" @click="clearAudio()" title="remove" aria-label="Remove audio">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
-              </button>
-            </div>
-            <small class="muted small">Dictate steps aloud or upload a screen-recording. We'll transcribe the audio and pair it with any caption/ingredients.</small>
           </div>
         </template>
+
+        <!-- Tab 4: Pasted Text -->
+        <div x-show="activeTab === 'text'" class="fade-in">
+          <textarea class="input" rows="5" placeholder="Paste raw recipe text or ingredients..." x-model="pastedText"></textarea>
+        </div>
         
         <div class="row">
           <div class="field">
@@ -371,7 +397,19 @@
 
             <small class="warn" x-show="updateMode">⚠ Saving changes will overwrite the existing recipe directly in Mealie.</small>
             <p class="err" x-show="error" x-text="error"></p>
+
+            <div class="row" style="margin-top: 14px;">
+              <button class="btn primary" :disabled="loading" @click="push()" x-text="updateMode ? 'Save Changes' : (queue.length ? ('Save & Next (' + queue.length + ' left)') : 'Save to Mealie')"></button>
+              <button class="btn ghost" x-show="hasSources() && !updateMode" @click="reExtract()">Tweak Prompt</button>
+              <button class="btn ghost" @click="discard()" x-text="queue.length ? 'Skip recipe' : 'Discard'"></button>
+            </div>
           </div>
+        </div>
+
+        <!-- Sticky Mobile Action Bar -->
+        <div class="actionbar" x-show="view === 'review'">
+          <button class="btn ghost sm" @click="discard()" x-text="queue.length ? 'Skip' : 'Discard'"></button>
+          <button class="btn primary" :disabled="loading" @click="push()" x-text="updateMode ? 'Save Changes' : (queue.length ? ('Save & Next (' + queue.length + ')') : 'Save to Mealie')"></button>
         </div>
 
       </div>
