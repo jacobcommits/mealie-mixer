@@ -27,7 +27,8 @@ function mixer() {
     // review
     recipe: emptyRecipe(), instructionsText: '', queue: [],
     photoFile: null, photoPreview: '', categoryInput: '', tagInput: '',
-    sourceImages: [], zoomSrc: '',
+    commonUnits: ['g', 'ml', 'tbsp', 'tsp', 'cup', 'clove', 'slice', 'piece', 'can', 'pinch', 'pack', 'head', 'stick', 'rasher', 'kg', 'l', 'oz', 'lb', 'fl oz'],
+    foodPickerModal: false, foodPickerSearch: '', foodPickerTargetIng: null,
     dupModal: false, _dupOk: false,
     // cookbook (B7, dev)
     cbRecipes: [], cbStructured: [], cbExpanded: null, cbEditIndex: null, cookbookJob: null, cbReviewJobId: '',
@@ -528,8 +529,18 @@ function mixer() {
     },
     filteredFoods(q) {
       const query = (q || '').trim().toLowerCase();
-      if (!query) return [];
-      return this.foods.filter(f => f.toLowerCase().includes(query)).slice(0, 8);
+      if (!query) {
+        return this.foods.slice(0, 10).map(f => ({ name: f, status: 'exists' }));
+      }
+      return this.foods
+        .filter(f => f.toLowerCase().includes(query))
+        .slice(0, 10)
+        .map(f => ({ name: f, status: 'exists' }));
+    },
+    filteredUnits(q) {
+      const query = (q || '').trim().toLowerCase();
+      if (!query) return this.commonUnits.slice(0, 10);
+      return this.commonUnits.filter(u => u.toLowerCase().includes(query)).slice(0, 8);
     },
     filteredCategories(q) {
       const query = (q || '').trim().toLowerCase();
@@ -540,6 +551,26 @@ function mixer() {
       const query = (q || '').trim().toLowerCase();
       if (!query) return [];
       return this.tags.filter(t => t.toLowerCase().includes(query)).slice(0, 8);
+    },
+    openFoodPicker(ing = null) {
+      this.foodPickerTargetIng = ing;
+      this.foodPickerSearch = ing ? (ing.food || '') : '';
+      this.foodPickerModal = true;
+    },
+    selectPickerFood(foodName) {
+      if (this.foodPickerTargetIng) {
+        this.foodPickerTargetIng.food = foodName;
+      } else {
+        this.recipe.ingredients.push({ quantity: '', unit: '', food: foodName, note: '', title: '' });
+      }
+      this.foodPickerModal = false;
+      this.foodPickerTargetIng = null;
+      this.saveSession();
+    },
+    filteredPickerFoods() {
+      const q = (this.foodPickerSearch || '').trim().toLowerCase();
+      if (!q) return this.foods;
+      return this.foods.filter(f => f.toLowerCase().includes(q));
     },
     alreadyImported() {
       // non-blocking dedupe: does the entered URL match something already imported?

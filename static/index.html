@@ -8,8 +8,8 @@
   <link rel="icon" type="image/png" href="/icons/favicon.png" />
   <link rel="apple-touch-icon" href="/icons/icon-180.png" />
   <title>Mealie Mixer</title>
-  <link rel="stylesheet" href="/style.css?v=0.19.0" />
-  <script defer src="/app.js?v=0.19.0"></script>
+  <link rel="stylesheet" href="/style.css?v=0.20.0" />
+  <script defer src="/app.js?v=0.20.0"></script>
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -346,7 +346,12 @@
               </div>
             </div>
 
-            <h3>Ingredients</h3>
+            <div class="section-hdr">
+              <h3>Ingredients</h3>
+              <button type="button" class="btn ghost sm" @click="openFoodPicker()" title="Browse all Mealie foods">
+                🔍 Browse Database
+              </button>
+            </div>
             <div class="ings">
               <template x-for="(ing, i) in recipe.ingredients" :key="i">
                 <div class="ingwrap">
@@ -355,25 +360,48 @@
                   
                   <div class="ing">
                     <input class="input qty" placeholder="qty" x-model="ing.quantity" />
-                    <input class="input unit" placeholder="unit" x-model="ing.unit" />
                     
-                    <!-- Food Autocomplete Custom Combobox -->
-                    <div class="combobox-wrapper" x-data="{ open: false, activeIndex: -1 }" @click.away="open = false">
-                      <input class="input food" placeholder="food name" x-model="ing.food"
+                    <!-- Unit Autocomplete Custom Combobox -->
+                    <div class="combobox-wrapper unit-combobox" x-data="{ open: false, activeIndex: -1 }" @click.away="open = false">
+                      <input class="input unit" placeholder="unit" x-model="ing.unit"
                              @focus="open = true; activeIndex = -1"
                              @keydown.escape="open = false"
-                             @keydown.arrow-down.prevent="open = true; activeIndex = Math.min(activeIndex + 1, filteredFoods(ing.food).length - 1)"
+                             @keydown.arrow-down.prevent="open = true; activeIndex = Math.min(activeIndex + 1, filteredUnits(ing.unit).length - 1)"
                              @keydown.arrow-up.prevent="activeIndex = Math.max(activeIndex - 1, -1)"
-                             @keydown.enter.prevent="if (activeIndex >= 0) { ing.food = filteredFoods(ing.food)[activeIndex]; } open = false;"
-                             :class="ing.food && ing.food.trim() ? 'fs-' + foodStatus(ing.food) : ''"
-                             :title="{exists:'Matched in Mealie',near:'Near-match in Mealie',new:'New food — will be created'}[foodStatus(ing.food)] || ''" />
+                             @keydown.enter.prevent="if (activeIndex >= 0) { ing.unit = filteredUnits(ing.unit)[activeIndex]; } open = false;" />
                       
-                      <div class="combobox-options" x-show="open && filteredFoods(ing.food).length" x-cloak>
-                        <template x-for="(f, idx) in filteredFoods(ing.food)" :key="f">
+                      <div class="combobox-options" x-show="open && filteredUnits(ing.unit).length" x-cloak>
+                        <template x-for="(u, idx) in filteredUnits(ing.unit)" :key="u">
                           <div class="combobox-option"
                                :class="{ 'active': activeIndex === idx }"
-                               @click="ing.food = f; open = false;"
-                               x-text="f"></div>
+                               @click="ing.unit = u; open = false;"
+                               x-text="u"></div>
+                        </template>
+                      </div>
+                    </div>
+                    
+                    <!-- Food Autocomplete Custom Combobox -->
+                    <div class="combobox-wrapper food-combobox" x-data="{ open: false, activeIndex: -1 }" @click.away="open = false">
+                      <div class="food-input-group">
+                        <input class="input food" placeholder="food name" x-model="ing.food"
+                               @focus="open = true; activeIndex = -1"
+                               @keydown.escape="open = false"
+                               @keydown.arrow-down.prevent="open = true; activeIndex = Math.min(activeIndex + 1, filteredFoods(ing.food).length - 1)"
+                               @keydown.arrow-up.prevent="activeIndex = Math.max(activeIndex - 1, -1)"
+                               @keydown.enter.prevent="if (activeIndex >= 0) { ing.food = filteredFoods(ing.food)[activeIndex].name; } open = false;"
+                               :class="ing.food && ing.food.trim() ? 'fs-' + foodStatus(ing.food) : ''"
+                               :title="{exists:'Matched in Mealie',near:'Near-match in Mealie',new:'New food — will be created'}[foodStatus(ing.food)] || ''" />
+                        <button type="button" class="food-search-btn" @click="openFoodPicker(ing)" title="Search Mealie foods for this row">🔍</button>
+                      </div>
+                      
+                      <div class="combobox-options" x-show="open && filteredFoods(ing.food).length" x-cloak>
+                        <template x-for="(f, idx) in filteredFoods(ing.food)" :key="f.name">
+                          <div class="combobox-option combobox-option-badge"
+                               :class="{ 'active': activeIndex === idx }"
+                               @click="ing.food = f.name; open = false;">
+                            <span x-text="f.name"></span>
+                            <span class="cb-badge cb-badge-exists">In Mealie</span>
+                          </div>
                         </template>
                       </div>
                     </div>
@@ -396,9 +424,10 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                       </button>
                     </div>
-                    <button class="foodhint" type="button" x-show="nearestFood(ing.food)"
-                            @click="ing.food = nearestFood(ing.food)"
-                            x-text="'↳ Matched food: ' + nearestFood(ing.food) + '?'"></button>
+                    <button class="match-pill" type="button" x-show="nearestFood(ing.food)"
+                            @click="ing.food = nearestFood(ing.food)">
+                      <span class="match-icon">↳</span> Use Mealie food: <strong x-text="'&quot;' + nearestFood(ing.food) + '&quot;'"></strong>
+                    </button>
                     <button class="foodhint" type="button" x-show="!ing.title"
                             @click="ing.title = 'Section'">§ Section heading</button>
                   </div>
@@ -826,6 +855,34 @@
       <div class="row">
         <button class="btn ghost" @click="cancelDup()">Cancel</button>
         <button class="btn primary" @click="confirmDup()">Push anyway</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Food Database Picker Modal -->
+  <div class="modal" x-show="foodPickerModal" @click.self="foodPickerModal = false" x-transition.opacity x-cloak>
+    <div class="modalbox picker-box">
+      <div class="picker-hdr">
+        <h2>🔍 Mealie Food Database</h2>
+        <button type="button" class="x" @click="foodPickerModal = false">✕</button>
+      </div>
+      <p class="picker-desc">Search your Mealie food database and click any item to select it for your recipe.</p>
+      <input class="input picker-search" type="text" placeholder="Type to filter foods…" x-model="foodPickerSearch" autofocus />
+      
+      <div class="picker-list">
+        <template x-for="f in filteredPickerFoods()" :key="f">
+          <button type="button" class="picker-item" @click="selectPickerFood(f)">
+            <span class="picker-name" x-text="f"></span>
+            <span class="cb-badge cb-badge-exists">In Mealie</span>
+          </button>
+        </template>
+        <div class="picker-empty" x-show="!filteredPickerFoods().length">
+          No foods matching "<span x-text="foodPickerSearch"></span>" found in Mealie.
+        </div>
+      </div>
+
+      <div class="row" style="margin-top: 14px; justify-content: flex-end;">
+        <button class="btn ghost sm" @click="foodPickerModal = false">Close</button>
       </div>
     </div>
   </div>
