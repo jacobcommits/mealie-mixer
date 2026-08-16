@@ -134,10 +134,16 @@
             <span class="tab-badge" x-show="hasTabSource('photo')"></span>
           </button>
 
-          <button type="button" class="tab-btn" x-show="cfgInfo.voice" :class="{ active: activeTab === 'voice' }" @click="activeTab = 'voice'">
+          <button type="button" class="tab-btn" x-show="cfgInfo.voice" :class="{ active: activeTab === 'record' }" @click="activeTab = 'record'">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
-            <span>Voice / Video</span>
-            <span class="tab-badge" x-show="hasTabSource('voice')"></span>
+            <span>Record Voice</span>
+            <span class="tab-badge" x-show="hasTabSource('record')"></span>
+          </button>
+
+          <button type="button" class="tab-btn" x-show="cfgInfo.voice" :class="{ active: activeTab === 'media' }" @click="activeTab = 'media'">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+            <span>Audio / Video</span>
+            <span class="tab-badge" x-show="hasTabSource('media')"></span>
           </button>
 
           <button type="button" class="tab-btn" :class="{ active: activeTab === 'text' }" @click="activeTab = 'text'">
@@ -156,7 +162,7 @@
             <input class="input" type="url" placeholder="Paste a recipe URL (Instagram, TikTok, website...)" x-model="url" style="padding-left: 42px;" />
           </div>
           <small class="warn" x-show="importedNote()" x-text="importedNote()"></small>
-          <small class="muted small" x-show="socialUrl()">ℹ We'll read the post's caption. If instructions are only spoken, switch to the Voice / Video tab to attach a recording.</small>
+          <small class="muted small" x-show="socialUrl()">ℹ We'll read the post's caption. If instructions are only spoken, switch to the Record Voice or Audio/Video tab to attach a recording.</small>
         </div>
 
         <!-- Tab 2: Photo / File -->
@@ -171,32 +177,42 @@
           </label>
         </div>
 
-        <!-- Tab 3: Voice / Video -->
+        <!-- Tab 3: Record Voice (Live Microphone Dictation) -->
         <template x-if="cfgInfo.voice">
-          <div x-show="activeTab === 'voice'" class="fade-in">
-            <div class="voicebox">
-              <div class="row" style="align-items: center; gap: 14px;">
-                <button type="button" class="btn ghost" :class="{ recpulse: recording }" @click="toggleRecord()" style="flex: none;">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
-                  <span x-text="recording ? ('Stop · ' + recClock()) : 'Record voice note'"></span>
-                </button>
-                
-                <!-- HTML5 Audio visualizer canvas (B12: Waveform) -->
-                <canvas id="waveCanvas" width="130" height="42" x-show="recording" style="background: transparent; border-radius: 6px; flex: none;"></canvas>
-                
-                <label class="btn ghost filebtn" style="flex: 1;">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
-                  <span>Upload audio/video</span>
-                  <input type="file" accept="audio/*,video/*" @change="pickAudio($event)" />
-                </label>
-              </div>
-              <div class="audiorow" x-show="audioBlob && !recording">
-                <audio class="audioprev" :src="audioUrl" controls></audio>
+          <div x-show="activeTab === 'record'" class="fade-in">
+            <div class="voicebox" style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px; padding: 24px 16px; background: rgba(0, 0, 0, 0.2); border-radius: var(--radius-sm); border: 1px solid var(--border);">
+              <button type="button" class="btn primary" :class="{ recpulse: recording }" @click="toggleRecord()" style="padding: 16px 28px; font-size: 1.05rem; border-radius: 30px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
+                <span x-text="recording ? ('Stop Dictation · ' + recClock()) : 'Record Voice Note'"></span>
+              </button>
+              <canvas id="waveCanvas" width="220" height="46" x-show="recording" style="background: transparent; border-radius: 8px;"></canvas>
+              <div class="audiorow" x-show="audioBlob && !recording" style="width: 100%; max-width: 420px;">
+                <audio class="audioprev" :src="audioUrl" controls style="width: 100%;"></audio>
                 <button type="button" class="x" @click="clearAudio()" title="remove" aria-label="Remove audio">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
                 </button>
               </div>
-              <small class="muted small">Dictate steps aloud or upload a screen-recording. We'll transcribe the audio and pair it with any caption/ingredients.</small>
+              <small class="muted small">Dictate steps or ingredients aloud. We'll transcribe the recording and structure it into your recipe.</small>
+            </div>
+          </div>
+        </template>
+
+        <!-- Tab 4: Audio / Video File Upload -->
+        <template x-if="cfgInfo.voice">
+          <div x-show="activeTab === 'media'" class="fade-in">
+            <div class="voicebox" style="display: flex; flex-direction: column; gap: 14px; padding: 20px 16px; background: rgba(0, 0, 0, 0.2); border-radius: var(--radius-sm); border: 1px solid var(--border);">
+              <label class="btn ghost filebtn" style="width: 100%; justify-content: center; padding: 18px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+                <span>Select audio or video file (screen-recording, mp3, mp4, webm)</span>
+                <input type="file" accept="audio/*,video/*" @change="pickAudio($event)" />
+              </label>
+              <div class="audiorow" x-show="audioBlob && !recording">
+                <audio class="audioprev" :src="audioUrl" controls style="width: 100%;"></audio>
+                <button type="button" class="x" @click="clearAudio()" title="remove" aria-label="Remove audio">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
+                </button>
+              </div>
+              <small class="muted small">Upload a video clip or recorded audio. We'll transcribe the spoken instructions and pair them with your recipe.</small>
             </div>
           </div>
         </template>

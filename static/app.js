@@ -266,7 +266,8 @@ function mixer() {
     hasTabSource(t) {
       if (t === 'link') return !!(this.url || '').trim();
       if (t === 'photo') return !!(this.fileList && this.fileList.length);
-      if (t === 'voice') return !!this.audioBlob;
+      if (t === 'record') return !!this.audioBlob || this.recording;
+      if (t === 'media') return !!this.audioBlob;
       if (t === 'text') return !!(this.pastedText || '').trim();
       return false;
     },
