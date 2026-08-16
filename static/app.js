@@ -293,31 +293,13 @@ function mixer() {
         fd.append('prompt', this.prompt || '');
         fd.append('units_system', this.unitsSystem || 'metric');
 
-        this._extractController = new AbortController();
-        const timeoutId = setTimeout(() => this._extractController && this._extractController.abort(), 45000);
-        
-        const r = await fetch('/api/extract', {
-          method: 'POST',
-          body: fd,
-          credentials: 'same-origin',
-          signal: this._extractController.signal,
-        });
-        clearTimeout(timeoutId);
-
+        const r = await fetch('/api/extract', { method: 'POST', body: fd, credentials: 'same-origin' });
         if (!r.ok) throw new Error(await detail(r));
         const recipes = (await r.json()).recipes || [];
         if (!recipes.length) throw new Error('No recipe found — try a clearer shot or a different link.');
         this.queue = recipes.slice(1); this.updateMode = null; this.loadRecipe(recipes[0]); this.view = 'review';
-      } catch (e) {
-        if (e.name === 'AbortError') {
-          this.error = 'Extraction timed out — please try again or screenshot the recipe.';
-        } else {
-          this.error = String(e.message || e);
-        }
-      } finally {
-        this._extractController = null;
-        this.loading = false;
-      }
+      } catch (e) { this.error = String(e.message || e); }
+      finally { this.loading = false; }
     },
     // Combine flow: when a voice note / screen-recording is in the mix, transcription (and
     // any link fetch) runs server-side as a job we poll, so the slow first run doesn't hang

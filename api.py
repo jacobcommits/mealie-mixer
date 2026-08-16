@@ -270,22 +270,13 @@ async def api_extract(
     # its 30s timeout) and this endpoint is async, so calling it directly would
     # freeze the whole event loop (every other request, health checks, job polls).
     try:
-        async with asyncio.timeout(1.5):
-            res_cats, res_tags = await asyncio.gather(
-                run_in_threadpool(fetch_category_names),
-                run_in_threadpool(fetch_tag_names),
-                return_exceptions=True,
-            )
-            known_categories = res_cats if isinstance(res_cats, list) else []
-            known_tags = res_tags if isinstance(res_tags, list) else []
+        known_categories = await run_in_threadpool(fetch_category_names)
     except Exception:
-        known_categories, known_tags = [], []
+        known_categories = []
 
     tmp_paths: list[str] = []
     try:
         image_paths, doc_texts, audio_path = await _collect_sources(files, audio, tmp_paths)
-        # extract_recipes_from_sources does blocking LLM + httpx work — run it in the
-        # threadpool so a slow extract doesn't stall the server for everyone else.
         recipes = await run_in_threadpool(
             extract_recipes_from_sources,
             image_paths=image_paths,
@@ -295,7 +286,6 @@ async def api_extract(
             audio_path=audio_path,
             user_note=prompt, target_language=language,
             known_categories=known_categories,
-            known_tags=known_tags,
             units_system=units_system,
         )
     except ValueError as e:            # nothing provided / no speech in the audio
