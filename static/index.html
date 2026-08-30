@@ -46,12 +46,14 @@
 
     <!-- login -->
     <template x-if="view === 'login'">
-      <div class="card fade-in">
-        <h2>Sign in</h2>
-        <input class="input" type="text" placeholder="Username" x-model="loginUser" @keydown.enter="doLogin()" />
-        <input class="input" type="password" placeholder="Password" x-model="loginPass" @keydown.enter="doLogin()" />
-        <button class="btn primary" :disabled="loading" @click="doLogin()">Log in</button>
-        <p class="err" x-show="error" x-text="error"></p>
+      <div class="login-center">
+        <div class="card fade-in">
+          <h2>Sign in</h2>
+          <input class="input" type="text" placeholder="Username" x-model="loginUser" @keydown.enter="doLogin()" />
+          <input class="input" type="password" placeholder="Password" x-model="loginPass" @keydown.enter="doLogin()" />
+          <button class="btn primary" :disabled="loading" @click="doLogin()">Log in</button>
+          <p class="err" x-show="error" x-text="error"></p>
+        </div>
       </div>
     </template>
 
@@ -67,7 +69,7 @@
         <input class="input" type="password" x-model="cfg.mealie_token" :placeholder="secretPh('MEALIE')" />
         <small class="warn" x-show="pinned('MEALIE_TOKEN')">⚠ Token pinned by env var</small>
         <button class="btn ghost sm" @click="testMealie()">Test Mealie</button>
-        <small :class="mealieTest.ok ? 'ok' : 'err'" x-text="mealieTest.msg"></small>
+        <small :class="mealieTest.ok ? 'ok' : 'err'" x-show="mealieTest.msg" x-text="mealieTest.msg"></small>
 
         <h3>AI Backend</h3>
         <input class="input" type="password" x-model="cfg.ai_key" :placeholder="secretPh('AI')" />
@@ -82,7 +84,7 @@
         <small class="muted small">Global rules injected into every AI extraction prompt. Customize dietary preferences, allergies, or formatting guidelines for your household.</small>
 
         <button class="btn ghost sm" @click="testAi()">Test AI (≈1 token)</button>
-        <small :class="aiTest.ok ? 'ok' : 'err'" x-text="aiTest.msg"></small>
+        <small :class="aiTest.ok ? 'ok' : 'err'" x-show="aiTest.msg" x-text="aiTest.msg"></small>
 
         <h3>Login (Optional)</h3>
         <input class="input" type="text" placeholder="Username (leave blank for no login)" x-model="cfg.auth_user" />
@@ -102,7 +104,7 @@
 
             <h3>Developer & Debug</h3>
             <label class="checkfield" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-top: 6px;">
-              <input type="checkbox" x-model="verboseMode" @change="try { localStorage.setItem('mm-verbose', verboseMode ? '1' : '0'); } catch(_){}" />
+              <input type="checkbox" x-model="verboseMode" @change="toggleVerbose()" />
               <span style="font-weight: 500;">⚡ Show Live Execution Terminal during extraction</span>
             </label>
             <small class="muted small">Displays real-time logs (scraper actions, AI prompts, response sizes, micro-timing) inside the overlay window.</small>
