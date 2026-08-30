@@ -80,37 +80,78 @@
         <p class="muted small" x-show="view === 'setup'">Enter your Mealie + AI details to get started.</p>
 
         <h3>Mealie Connection</h3>
-        <input class="input" type="text" placeholder="Mealie URL (http://host:9925)" x-model="cfg.mealie_url" />
-        <small class="warn" x-show="pinned('MEALIE_URL')">⚠ Pinned by env var — settings won't change it</small>
-        <input class="input" type="password" x-model="cfg.mealie_token" :placeholder="secretPh('MEALIE')" />
-        <small class="warn" x-show="pinned('MEALIE_TOKEN')">⚠ Token pinned by env var</small>
-        <button class="btn ghost sm" @click="testMealie()">Test Mealie</button>
-        <small :class="mealieTest.ok ? 'ok' : 'err'" x-show="mealieTest.msg" x-text="mealieTest.msg"></small>
+        <div class="formgrid">
+          <div class="field">
+            <label class="fieldlabel">Mealie URL</label>
+            <input class="input" type="text" placeholder="http://host:9925" x-model="cfg.mealie_url" />
+            <small class="warn" x-show="pinned('MEALIE_URL')">⚠ Pinned by env var — settings won't change it</small>
+          </div>
+          <div class="field">
+            <label class="fieldlabel">Mealie API token</label>
+            <input class="input" type="password" x-model="cfg.mealie_token" :placeholder="secretPh('MEALIE')" />
+            <small class="warn" x-show="pinned('MEALIE_TOKEN')">⚠ Token pinned by env var</small>
+          </div>
+          <div class="field span2">
+            <button class="btn ghost sm" @click="testMealie()">Test Mealie</button>
+            <small :class="mealieTest.ok ? 'ok' : 'err'" x-show="mealieTest.msg" x-text="mealieTest.msg"></small>
+          </div>
+        </div>
 
         <h3>AI Backend</h3>
-        <input class="input" type="password" x-model="cfg.ai_key" :placeholder="secretPh('AI')" />
-        <small class="warn" x-show="pinned('AI_API_KEY')">⚠ AI API key pinned by env var</small>
-        <input class="input" type="text" placeholder="AI Base URL" x-model="cfg.ai_base" />
-        <input class="input" type="text" placeholder="AI Model" x-model="cfg.ai_model" />
-        <input class="input" type="number" min="0" placeholder="AI RPM Limit (0 or blank = no limit)" x-model="cfg.ai_rpm" />
-        <small class="muted small">Caps how fast bulk imports (e.g. cookbooks) call the AI. Reduce if you get provider rate limit errors.</small>
-        <small class="warn" x-show="pinned('AI_RPM_LIMIT')">⚠ RPM Limit pinned by env var</small>
-
-        <textarea class="input" rows="3" placeholder="Household & Dietary Rules (e.g. 'Never include mushrooms', 'Ania is vegetarian', 'Always translate to British English')" x-model="cfg.ai_rules"></textarea>
-        <small class="muted small">Global rules injected into every AI extraction prompt. Customize dietary preferences, allergies, or formatting guidelines for your household.</small>
-
-        <button class="btn ghost sm" @click="testAi()">Test AI (≈1 token)</button>
-        <small :class="aiTest.ok ? 'ok' : 'err'" x-show="aiTest.msg" x-text="aiTest.msg"></small>
+        <div class="formgrid">
+          <div class="field">
+            <label class="fieldlabel">AI API key</label>
+            <input class="input" type="password" x-model="cfg.ai_key" :placeholder="secretPh('AI')" />
+            <small class="warn" x-show="pinned('AI_API_KEY')">⚠ AI API key pinned by env var</small>
+          </div>
+          <div class="field">
+            <label class="fieldlabel">AI base URL</label>
+            <input class="input" type="text" placeholder="https://generativelanguage.googleapis.com/v1beta/openai/" x-model="cfg.ai_base" />
+          </div>
+          <div class="field">
+            <label class="fieldlabel">AI model</label>
+            <input class="input" type="text" placeholder="gemini-3.5-flash-lite" x-model="cfg.ai_model" />
+          </div>
+          <div class="field">
+            <label class="fieldlabel">AI RPM limit</label>
+            <input class="input" type="number" min="0" placeholder="0 = no limit" x-model="cfg.ai_rpm" />
+            <small class="warn" x-show="pinned('AI_RPM_LIMIT')">⚠ RPM Limit pinned by env var</small>
+          </div>
+          <div class="field span2">
+            <label class="fieldlabel">Household &amp; dietary rules</label>
+            <textarea class="input" rows="3" placeholder="e.g. 'Never include mushrooms', 'Ania is vegetarian', 'Always translate to British English'" x-model="cfg.ai_rules"></textarea>
+            <small class="muted small">Injected into every AI extraction prompt. Use for allergies, dietary rules, or formatting preferences.</small>
+          </div>
+          <div class="field span2">
+            <button class="btn ghost sm" @click="testAi()">Test AI (≈1 token)</button>
+            <small :class="aiTest.ok ? 'ok' : 'err'" x-show="aiTest.msg" x-text="aiTest.msg"></small>
+          </div>
+        </div>
 
         <h3>Login (Optional)</h3>
-        <input class="input" type="text" placeholder="Username (leave blank for no login)" x-model="cfg.auth_user" />
-        <input class="input" type="password" placeholder="Password (leave blank to keep current)" x-model="cfg.auth_pass" />
+        <div class="formgrid">
+          <div class="field">
+            <label class="fieldlabel">Username</label>
+            <input class="input" type="text" placeholder="leave blank for no login" x-model="cfg.auth_user" />
+          </div>
+          <div class="field">
+            <label class="fieldlabel">Password</label>
+            <input class="input" type="password" placeholder="leave blank to keep current" x-model="cfg.auth_pass" />
+          </div>
+        </div>
 
         <h3>Agent API Key (Optional)</h3>
-        <input class="input" type="password" x-model="cfg.api_key" :placeholder="secretPh('MIXER_API')" />
-        <small class="warn" x-show="pinned('MIXER_API_KEY')">⚠ API key pinned by env var</small>
-        <button class="btn ghost sm" @click="genKey()"><svg class="btn-ico" aria-hidden="true"><use href="#i-dice"></use></svg>Generate key</button>
-        <small class="mono" x-show="genKeyMsg" x-text="genKeyMsg"></small>
+        <div class="formgrid">
+          <div class="field span2">
+            <label class="fieldlabel">API key</label>
+            <input class="input" type="password" x-model="cfg.api_key" :placeholder="secretPh('MIXER_API')" />
+            <small class="warn" x-show="pinned('MIXER_API_KEY')">⚠ API key pinned by env var</small>
+          </div>
+          <div class="field span2">
+            <button class="btn ghost sm" @click="genKey()"><svg class="btn-ico" aria-hidden="true"><use href="#i-dice"></use></svg>Generate key</button>
+            <small class="mono" x-show="genKeyMsg" x-text="genKeyMsg"></small>
+          </div>
+        </div>
 
         <template x-if="view === 'settings'">
           <div>
