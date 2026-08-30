@@ -54,8 +54,8 @@ def _load(job_id: str, kind: str = "cookbook") -> dict | None:
 
 
 def _structure_default(text: str, language: str, units_system: str):
-    from extract import extract_recipes_from_text
     import push
+    from extract import extract_recipes_from_text
     categories = push.fetch_category_names()
     tags = push.fetch_tag_names()
     return extract_recipes_from_text(

@@ -18,6 +18,7 @@ import base64
 import io
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -210,8 +211,10 @@ def _structure(content: list, log=None) -> list[dict]:
     base_url = config.get("AI_BASE_URL")
     model = config.get("AI_MODEL")
     if log:
-        try: log(f"🤖 Connecting to AI Provider ({model} @ {base_url[:35]}...)")
-        except Exception: pass
+        try:
+            log(f"🤖 Connecting to AI Provider ({model} @ {base_url[:35]}...)")
+        except Exception:
+            pass
 
     client = OpenAI(base_url=base_url, api_key=api_key, timeout=45.0)
     _rpm_wait()   # honour the configured AI requests/min cap (bulk imports)
@@ -233,24 +236,32 @@ def _structure(content: list, log=None) -> list[dict]:
         return client.chat.completions.create(**kwargs)
 
     if log:
-        try: log("⏳ Waiting for AI completion...")
-        except Exception: pass
+        try:
+            log("⏳ Waiting for AI completion...")
+        except Exception:
+            pass
 
     try:
         resp = _call_with_retry(make_call)
         raw = resp.choices[0].message.content or ""
         if log:
-            try: log(f"📥 Received AI response ({len(raw)} chars). Structuring...")
-            except Exception: pass
+            try:
+                log(f"📥 Received AI response ({len(raw)} chars). Structuring...")
+            except Exception:
+                pass
         recipes = _normalize(parse_recipes(raw))
         if log:
-            try: log(f"✨ Successfully structured {len(recipes)} recipe(s)!")
-            except Exception: pass
+            try:
+                log(f"✨ Successfully structured {len(recipes)} recipe(s)!")
+            except Exception:
+                pass
         return recipes
     except Exception as e:
         if log:
-            try: log(f"❌ AI Error ({type(e).__name__}): {str(e)[:250]}")
-            except Exception: pass
+            try:
+                log(f"❌ AI Error ({type(e).__name__}): {str(e)[:250]}")
+            except Exception:
+                pass
         raise
 
 
@@ -637,8 +648,10 @@ def extract_recipes_from_sources(
     into structured recipe(s). Single unified pipeline used by B3 combine jobs."""
     def _log(msg):
         if log:
-            try: log(msg)
-            except Exception: pass
+            try:
+                log(msg)
+            except Exception:
+                pass
 
     _log("🚀 Starting recipe extraction...")
     if progress:

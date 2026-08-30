@@ -99,9 +99,9 @@ def test_self_service_account_updates(monkeypatch, tmp_path):
     users.create_user("bob", "bpw", is_admin=False, display_name="Bobby")
     c = _client()
     # log in as standard user bob
-    l = c.post("/api/login", json={"username": "bob", "password": "bpw"})
-    assert l.status_code == 200
-    assert l.json()["display_name"] == "Bobby"
+    login_resp = c.post("/api/login", json={"username": "bob", "password": "bpw"})
+    assert login_resp.status_code == 200
+    assert login_resp.json()["display_name"] == "Bobby"
 
     # bob changes his display name
     r1 = c.post("/api/users/me/display-name", json={"display_name": "Robert"})

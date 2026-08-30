@@ -189,6 +189,7 @@ def test_fetch_recipes_returns_slug_name():
 def test_api_restandardize_endpoint():
     """Verify POST /api/restandardize calls extract_recipes_from_text without signature errors."""
     from fastapi.testclient import TestClient
+
     import app
 
     client = TestClient(app.fastapi_app)
