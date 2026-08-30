@@ -7,6 +7,13 @@ line-length = 110          # fits the existing descriptive style (prompts/docstr
 target-version = "py312"   # Dockerfile is python:3.12-slim (the floor); dev venv is 3.14
 extend-exclude = ["venv", "data", "static/vendor"]
 
+[tool.pytest.ini_options]
+# Repo root on sys.path for bare `pytest` invocations (CI runs plain `pytest`,
+# not `python -m pytest` — the latter adds CWD itself, which is why this only
+# broke in CI). Tests do bare `import config` / `import api` / `import app`.
+pythonpath = ["."]
+testpaths = ["tests"]
+
 [tool.ruff.lint]
 select = [
   "E", "W",   # pycodestyle errors + warnings
