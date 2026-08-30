@@ -429,13 +429,14 @@
                             @click="ing.food = nearestFood(ing.food)">
                       <span class="match-icon">↳</span> Use Mealie food: <strong x-text="'&quot;' + nearestFood(ing.food) + '&quot;'"></strong>
                     </button>
-                    <button class="foodhint" type="button" x-show="!ing.title"
-                            @click="ing.title = 'Section'">§ Section heading</button>
                   </div>
                 </div>
               </template>
             </div>
-            <button class="btn ghost sm" @click="addIngredient()">+ Add ingredient</button>
+            <div class="row" style="gap: 8px; margin-top: 6px; flex-wrap: wrap;">
+              <button class="btn ghost sm" @click="addIngredient()">+ Add ingredient</button>
+              <button class="btn ghost sm" @click="addSectionHeading()" title="Insert a section divider between ingredients">+ Add section heading</button>
+            </div>
             <div class="legend" style="margin-top: 6px;">
               <span><span style="color: var(--ok)">●</span> In Mealie</span>
               <span><span style="color: var(--warning)">●</span> Near-match</span>

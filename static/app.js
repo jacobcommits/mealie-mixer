@@ -480,6 +480,15 @@ function mixer() {
       this.saveSession();
     },
     addIngredient() { this.recipe.ingredients.push({ quantity: '', unit: '', food: '', note: '', title: '' }); },
+    addSectionHeading() {
+      this.recipe.ingredients.push({ quantity: '', unit: '', food: '', note: '', title: 'New Section' });
+      // focus the new section's title input on next tick (focus the last rendered one)
+      this.$nextTick(() => {
+        const inputs = document.querySelectorAll('.ings input.input.section');
+        const last = inputs[inputs.length - 1];
+        if (last) { last.focus(); last.select(); }
+      });
+    },
     moveIngredient(from, to) {
       if (from === to || from == null || to == null) return;
       const items = [...this.recipe.ingredients];

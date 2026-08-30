@@ -360,6 +360,10 @@ body {
 .input::placeholder {
   color: var(--muted-dark);
 }
+/* Light-mode placeholder override (dark-mode color #475569 fails WCAG AA on white) */
+@media (prefers-color-scheme: light) {
+  html:not([data-theme="dark"]) .input::placeholder { color: #6b7280; }
+}
 .input:hover {
   border-color: var(--border-hover);
   /* background-color (not the `background` shorthand) so a select's chevron
@@ -1084,7 +1088,8 @@ small {
 }
 .movebtn {
   cursor: pointer;
-  color: var(--muted-dark);
+  color: var(--text);
+  opacity: 0.7;
   background: transparent;
   border: 1px solid var(--border);
   display: inline-flex;
@@ -1359,13 +1364,14 @@ small {
 }
 
 .legend {
+  font-size: 0.78rem;
   color: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 600;
   margin-top: -2px;
   display: flex;
   gap: 14px;
   flex-wrap: wrap;
+}
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
 }
 
 /* Sticky Action Bar at Bottom */
@@ -1391,6 +1397,18 @@ small {
 }
 .actionbar .btn {
   flex: 1;
+}
+/* Constrain the action bar to the content card width on wide screens — full
+   bleed on mobile (touch targets benefit). */
+@media (min-width: 720px) {
+  .actionbar {
+    max-width: 1200px;
+    margin: 0 auto;
+    left: 0;
+    right: 0;
+    border-radius: 16px 16px 0 0;
+    justify-content: flex-end;
+  }
 }
 /* Ghost buttons on the dark glass bar need explicit light text + a visible
    border — inheriting the page surface colour made them near-invisible. */
