@@ -235,6 +235,9 @@ function mixer() {
       if (has) return 'leave blank to keep current';
       return which === 'MIXER_API' ? 'leave blank to disable the API' : 'required';
     },
+    toggleVerbose() {
+      try { localStorage.setItem('mm-verbose', this.verboseMode ? '1' : '0'); } catch (_) {}
+    },
     async testMealie() {
       this.mealieTest = { ok: false, msg: 'testing…' };
       try { const j = await (await api('/api/config/test-mealie', { method: 'POST', body: JSON.stringify(this.cfg) })).json();

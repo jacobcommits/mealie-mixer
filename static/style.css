@@ -216,10 +216,12 @@ body {
   padding: 28px 24px;
   transform: translateX(100%);
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: -12px 0 35px rgba(0, 0, 0, 0.6);
 }
 .drawer.open {
   transform: translateX(0);
+  /* shadow lives on the OPEN state only — keeping it on the closed (off-screen)
+     drawer bled a ~50px dark gradient onto the right edge of every page */
+  box-shadow: -12px 0 35px rgba(0, 0, 0, 0.6);
 }
 
 .drawer-head {
@@ -268,6 +270,14 @@ body {
   margin: 0 auto;
   padding: 28px 16px;
   transition: max-width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Login card: vertically centred instead of clinging to the top of the page */
+.login-center {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: calc(100dvh - 220px);
 }
 
 /* Widens the wrapper only when the split pane actually has an image column */
@@ -377,7 +387,7 @@ select.input:hover {
 }
 
 textarea.input {
-  resize: vertical;
+  resize: none;
   line-height: 1.5;
 }
 
@@ -1359,22 +1369,38 @@ small {
 }
 
 /* Sticky Action Bar at Bottom */
+/* Sticky Mobile Action Bar — single source of truth (was defined twice; the
+   later definition defeated the light-mode override and dropped the iOS
+   safe-area inset, cutting the CTA off at the screen edge). */
 .actionbar {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
+  z-index: 45;
   display: flex;
-  gap: 14px;
-  padding: 18px 24px calc(18px + env(safe-area-inset-bottom));
-  background: rgba(6, 6, 8, 0.82);
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
+  background: rgba(6, 6, 8, 0.85);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-top: 1px solid var(--border);
-  z-index: 30;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
 }
 .actionbar .btn {
   flex: 1;
+}
+/* Ghost buttons on the dark glass bar need explicit light text + a visible
+   border — inheriting the page surface colour made them near-invisible. */
+.actionbar .btn.ghost {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #fafafa;
+}
+.actionbar .btn.ghost:hover {
+  background: rgba(255, 255, 255, 0.14);
 }
 .actionbar .primary {
   flex: 2;
@@ -1618,6 +1644,12 @@ small {
 
   .topbar { background: rgba(255, 255, 255, 0.78); }
   .actionbar { background: rgba(255, 255, 255, 0.82); }
+  .actionbar .btn.ghost {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: var(--border);
+    color: #1c1c22;
+  }
+  .actionbar .btn.ghost:hover { background: rgba(0, 0, 0, 0.08); }
   .drawer { background: rgba(255, 255, 255, 0.92); }
   .drawer-item:hover { background: rgba(0, 0, 0, 0.04); }
   .drawer-item:active { background: rgba(0, 0, 0, 0.07); }
@@ -1711,24 +1743,7 @@ small {
   box-shadow: 0 0 8px var(--accent-glow);
 }
 
-/* Sticky Mobile Action Bar */
-.actionbar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 45;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 20px;
-  background: rgba(6, 6, 8, 0.85);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border-top: 1px solid var(--border);
-  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
-}
+/* Sticky Mobile Action Bar (see the single definition above) */
 
 @media (max-width: 640px) {
   .tabs-bar {
