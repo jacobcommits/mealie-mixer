@@ -2,7 +2,7 @@
 // offline. NETWORK-FIRST (so updates always land when online); the cache is
 // just the offline fallback. Never touches /api, /docs, /admin.
 
-const CACHE = 'mealie-mixer-v4';
+const CACHE = 'mealie-mixer-v5';
 const SHELL = [
   '/', '/app.js', '/style.css', '/vendor/alpine.min.js',
   '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png',
