@@ -13,6 +13,22 @@
   <script defer src="/vendor/alpine.min.js"></script>
 </head>
 <body>
+<!-- Inline SVG icon set — defined once, used everywhere via <use href="#i-...">.
+     No CDN, no emoji (consistent rendering across iOS/Android/desktop),
+     no new network asset (PWA shell unchanged). Lucide-style strokes. -->
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="4" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M19 10v2a7 7 0 0 1-14 0v-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="4" y1="17" x2="14" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="i-dice" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="16" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="16" r="1.3" fill="currentColor"/><circle cx="16" cy="16" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-tray" viewBox="0 0 24 24"><path d="M2 12h6l2 3h4l2-3h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 17h14V5a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v12z" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M4 4h12l4 4v12a2 2 0 0 1-2 2H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M16 4v4h4" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+  </defs>
+</svg>
 <div id="app" x-data="mixer()" x-init="init()" x-cloak>
 
   <header class="topbar">
@@ -93,19 +109,19 @@
         <h3>Agent API Key (Optional)</h3>
         <input class="input" type="password" x-model="cfg.api_key" :placeholder="secretPh('MIXER_API')" />
         <small class="warn" x-show="pinned('MIXER_API_KEY')">⚠ API key pinned by env var</small>
-        <button class="btn ghost sm" @click="genKey()">🎲 Generate key</button>
+        <button class="btn ghost sm" @click="genKey()"><svg class="btn-ico" aria-hidden="true"><use href="#i-dice"></use></svg>Generate key</button>
         <small class="mono" x-show="genKeyMsg" x-text="genKeyMsg"></small>
 
         <template x-if="view === 'settings'">
           <div>
             <h3>Voice Transcription</h3>
-            <small class="ok" x-show="cfgInfo.voice">🎤 Transcription enabled in this build — record or upload audio notes directly.</small>
+            <small class="ok" x-show="cfgInfo.voice"><svg class="ok-ico" aria-hidden="true"><use href="#i-mic"></use></svg>Transcription enabled in this build — record or upload audio notes directly.</small>
             <small class="muted small" x-show="!cfgInfo.voice">Not included in this build (requires Whisper model files). Build with <span class="mono">WITH_VOICE=1</span> to enable voice features.</small>
 
             <h3>Developer & Debug</h3>
             <label class="checkfield" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-top: 6px;">
               <input type="checkbox" x-model="verboseMode" @change="toggleVerbose()" />
-              <span style="font-weight: 500;">⚡ Show Live Execution Terminal during extraction</span>
+              <span style="font-weight: 500;"><svg class="ok-ico" aria-hidden="true"><use href="#i-bolt"></use></svg>Show Live Execution Terminal during extraction</span>
             </label>
             <small class="muted small">Displays real-time logs (scraper actions, AI prompts, response sizes, micro-timing) inside the overlay window.</small>
           </div>
@@ -131,23 +147,27 @@
       <div class="card fade-in">
         <h2>Add a recipe</h2>
         <p class="muted small">Add one source or several — a link, recipe images, text, or a voice/video recording — and we'll merge them into one clean recipe.</p>
-        <p class="muted small">📚 Importing a whole cookbook? <button type="button" class="linkbtn" @click="openCookbook()">Use Cookbook import</button> in the menu for much better results.</p>
+        <p class="muted small"><svg class="muted-ico" aria-hidden="true"><use href="#i-book"></use></svg>Importing a whole cookbook? <button type="button" class="linkbtn" @click="openCookbook()">Use Cookbook import</button> in the menu for much better results.</p>
         
         <div class="tabs-bar">
           <button type="button" class="tab-btn" :class="{ active: activeTab === 'link' }" @click="activeTab = 'link'">
-            <span>🔗 Link</span>
+            <svg class="tab-ico" aria-hidden="true"><use href="#i-link"></use></svg>
+            <span>Link</span>
             <span class="tab-badge" x-show="hasTabSource('link')"></span>
           </button>
           <button type="button" class="tab-btn" :class="{ active: activeTab === 'photo' }" @click="activeTab = 'photo'">
-            <span>📷 Photo</span>
+            <svg class="tab-ico" aria-hidden="true"><use href="#i-camera"></use></svg>
+            <span>Photo</span>
             <span class="tab-badge" x-show="hasTabSource('photo')"></span>
           </button>
           <button type="button" class="tab-btn" x-show="cfgInfo.voice" :class="{ active: activeTab === 'voice' }" @click="activeTab = 'voice'">
-            <span>🎤 Voice</span>
+            <svg class="tab-ico" aria-hidden="true"><use href="#i-mic"></use></svg>
+            <span>Voice</span>
             <span class="tab-badge" x-show="hasTabSource('voice')"></span>
           </button>
           <button type="button" class="tab-btn" :class="{ active: activeTab === 'text' }" @click="activeTab = 'text'">
-            <span>📝 Text</span>
+            <svg class="tab-ico" aria-hidden="true"><use href="#i-text"></use></svg>
+            <span>Text</span>
             <span class="tab-badge" x-show="hasTabSource('text')"></span>
           </button>
         </div>
@@ -537,7 +557,11 @@
     <template x-if="view === 'history'">
       <div class="card fade-in">
         <h2>Import history</h2>
-        <p class="muted small" x-show="!history.length">No import history entries recorded.</p>
+        <div class="empty" x-show="!history.length">
+          <svg class="empty-ico" aria-hidden="true"><use href="#i-tray"></use></svg>
+          <h3>Nothing here yet</h3>
+          <p class="muted small">Recipes you import will appear here. Approve one from the review screen and it shows up.</p>
+        </div>
         <div class="histlist">
           <template x-for="(h, i) in history" :key="i">
             <div class="histitem">
@@ -579,7 +603,7 @@
     <!-- cookbook: upload -->
     <template x-if="view === 'cookbook-upload'">
       <div class="card fade-in">
-        <h2>📚 Cookbook import</h2>
+        <h2><svg class="h2-ico" aria-hidden="true"><use href="#i-book"></use></svg>Cookbook import</h2>
         <p class="muted small">Upload a recipe book PDF. Mixer parses the cookbook to find individual recipes and images, then lets you review and structure them in bulk. Works best on text-based PDFs.</p>
         
         <label class="filezone cookbookzone">
