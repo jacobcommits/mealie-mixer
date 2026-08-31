@@ -39,7 +39,7 @@
   --surface-opaque: #111118;
   --surface2: rgba(30, 30, 46, 0.45); /* Sleek translucent inputs */
   --surface2-opaque: #1d1d28;
-  --border: rgba(255, 255, 255, 0.06); /* Thin luxurious border */
+  --border: rgba(255, 255, 255, 0.10); /* Thin luxurious border */
   --border-hover: rgba(255, 255, 255, 0.12);
   --border-focus: #f97316; /* Sunset Orange */
   --text: #fafafa;
